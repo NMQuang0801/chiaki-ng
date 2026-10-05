@@ -1,0 +1,211 @@
+name: Build chiaki-ng macOS Intel + Windows x64
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ new_main ]
+
+jobs:
+  build-mac_x86_64:
+    name: Build macOS Intel (x86_64)
+    runs-on: macos-15-intel
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Qt from the official installer (universal binaries) instead of Homebrew,
+      # since Homebrew no longer guarantees Intel bottles for large formulae like qt@6
+      - name: Setup Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.9.*"
+          host: mac
+          target: desktop
+          modules: 'qtwebengine qtpositioning qtwebchannel qtwebsockets'
+          cache: true
+
+      - name: Install protobuf
+        run: |
+          pip3 install --user 'protobuf>=5,<6' --break-system-packages
+
+      - name: Install brew dependencies
+        run: |
+          brew update
+          brew uninstall pkgconfig || true
+          brew install ffmpeg pkgconfig opus openssl@3 cmake ninja nasm protobuf@29 speexdsp libplacebo wget python-setuptools json-c miniupnpc libevent
+
+      - name: Install sdl2-compat
+        run: |
+          sudo INSTALL_PREFIX=/usr/local scripts/build-sdl2-compat.sh
+          sudo cp /usr/local/lib/pkgconfig/sdl2-compat.pc /usr/local/lib/pkgconfig/sdl2.pc
+
+      - name: Configure chiaki-ng
+        run: |
+          cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release \
+            -DCHIAKI_ENABLE_CLI=OFF -DCHIAKI_ENABLE_STEAMDECK_NATIVE=OFF \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR};$(brew --prefix)/opt/openssl@3;$(brew --prefix)/opt/protobuf@29"
+
+      - name: Build chiaki-ng
+        run: |
+          export CPATH=$(brew --prefix)/opt/ffmpeg/include
+          cmake --build build --config Release --clean-first --target chiaki
+
+      - name: Deploy chiaki-ng
+        run: |
+          rm -rf chiaki-ng.app chiaki-ng.dmg
+          cp -a build/gui/chiaki.app chiaki-ng.app
+          cp scripts/qtwebengine_import.qml gui/src/qml/
+          MACDEPLOYQT="${QT_ROOT_DIR}/bin/macdeployqt"
+          "$MACDEPLOYQT" chiaki-ng.app -qmldir="$PWD/gui/src/qml" -libpath=$(brew --prefix)/lib
+          mkdir -p chiaki-ng.app/Contents/Resources/vulkan/icd.d
+          wget https://github.com/KhronosGroup/MoltenVK/releases/download/v1.2.9/MoltenVK-macos.tar && tar xf MoltenVK-macos.tar
+          cp MoltenVK/MoltenVK/dylib/macOS/* chiaki-ng.app/Contents/Resources/vulkan/icd.d
+          "$MACDEPLOYQT" chiaki-ng.app -qmldir="$PWD/gui/src/qml" -libpath=$(brew --prefix)/lib
+          WEBENGINE_HELPER=chiaki-ng.app/Contents/Frameworks/QtWebEngineCore.framework/Helpers/QtWebEngineProcess.app/Contents
+          if [[ -d "$WEBENGINE_HELPER" && ! -e "$WEBENGINE_HELPER/Frameworks" ]]
+          then
+            ln -s ../../../../../../../Frameworks "$WEBENGINE_HELPER"
+          fi
+          cp /usr/local/lib/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL3.dylib
+          cp /usr/local/lib/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib
+          install_name_tool -id @executable_path/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL3.dylib
+          install_name_tool -id @executable_path/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib
+          install_name_tool -change /usr/local/lib/libSDL3.dylib @executable_path/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib || true
+          install_name_tool -change @rpath/libSDL3.dylib @executable_path/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib || true
+          install_name_tool -change /usr/local/lib/libSDL2-2.0.0.dylib @executable_path/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/chiaki || true
+          install_name_tool -change @rpath/libSDL2-2.0.0.dylib @executable_path/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/chiaki || true
+          [[ -e chiaki-ng.app/Contents/Frameworks/vulkan ]] || ln -s libvulkan.1.dylib chiaki-ng.app/Contents/Frameworks/vulkan
+          codesign --force --entitlements gui/entitlements.xml --deep --sign - chiaki-ng.app
+          hdiutil create -srcfolder chiaki-ng.app chiaki-ng.dmg
+          codesign --force --entitlements gui/entitlements.xml --deep --sign - chiaki-ng.dmg
+          cp chiaki-ng.dmg "chiaki-ng-macos_x86_64-${GITHUB_SHA::7}.dmg"
+
+      - name: Upload chiaki-ng Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chiaki-ng-macos_x86_64
+          path: chiaki-ng-macos_x86_64-*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+  build-windows_x64-msys2:
+    name: Build Windows x64 (MSYS2)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Disable autocrlf
+        shell: pwsh
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: mingw64
+          update: true
+          install: git
+          pacboy: >-
+            ca-certificates:p
+            cc:p
+            cmake:p
+            curl:p
+            diffutils:p
+            fast_float:p
+            fftw:p
+            hidapi:p
+            json-c:p
+            libevent:p
+            lcms2:p
+            libdovi:p
+            meson:p
+            miniupnpc:p
+            gcc:p
+            nasm:p
+            ninja:p
+            openssl:p
+            opus:p
+            pkgconf:p
+            protobuf:p
+            python:p
+            python-psutil:p
+            python-glad:p
+            python-jinja:p
+            python-pip:p
+            qt6-base:p
+            qt6-declarative:p
+            qt6-svg:p
+            shaderc:p
+            speexdsp:p
+            spirv-cross:p
+            vulkan:p
+            vulkan-headers:p
+            compiler-rt:p
+
+      - name: Install python protobuf and zip
+        run: |
+          pip install protobuf
+          pacman -S git make unzip zip --noconfirm
+
+      - name: Build libplacebo
+        run: |
+          scripts/build-libplacebo-windows.sh
+
+      - name: Setup ffmpeg
+        run: |
+          curl -LO https://github.com/streetpea/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-win64-gpl-shared-7.1.zip
+          unzip ffmpeg-n7.1-latest-win64-gpl-shared-7.1.zip
+          cp -a "ffmpeg-n7.1-latest-win64-gpl-shared-7.1/bin/." /mingw64/bin
+          cp -a "ffmpeg-n7.1-latest-win64-gpl-shared-7.1/include/." /mingw64/include
+          cp -a "ffmpeg-n7.1-latest-win64-gpl-shared-7.1/lib/." /mingw64/lib
+
+      - name: Build sdl2-compat
+        run: |
+          INSTALL_PREFIX=/mingw64 scripts/build-sdl2-compat.sh .
+          cp /mingw64/lib/pkgconfig/sdl2-compat.pc /mingw64/lib/pkgconfig/sdl2.pc
+
+      - name: Configure chiaki-ng
+        run: |
+          cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCHIAKI_ENABLE_CLI=OFF
+
+      - name: Build chiaki-ng
+        run: |
+          cmake --build build --config Release --clean-first --target chiaki
+
+      - name: Deploy chiaki-ng
+        run: |
+          ./scripts/deploy-windows-msys2.sh chiaki-ng-Win build/gui/chiaki.exe "${{ github.workspace }}/build/third-party/cpp-steam-tools" /mingw64 gui/src/qml
+
+      - name: Package chiaki-ng
+        run: |
+          zip -r "chiaki-ng-win_x64-portable-${GITHUB_SHA::7}.zip" chiaki-ng-Win
+
+      - name: Upload portable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: chiaki-ng-win_x64-portable
+          path: chiaki-ng-win_x64-portable-*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Compile .ISS to .EXE Installer
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.7
+        with:
+          path: "scripts/chiaki-ng.iss"
+          options: /O+
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: chiaki-ng-win_x64-installer
+          path: chiaki-ng-windows-installer.exe
+          if-no-files-found: error
+          retention-days: 14
