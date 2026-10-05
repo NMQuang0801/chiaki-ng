@@ -18,6 +18,11 @@ on:
           - all
           - macos-intel
           - windows
+      create_release:
+        description: 'Tạo GitHub Release (giữ file lâu dài, tải không cần đăng nhập)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build-mac_x86_64:
@@ -25,6 +30,9 @@ jobs:
     if: inputs.platform == 'all' || inputs.platform == 'macos-intel'
     runs-on: macos-15-intel
     timeout-minutes: 360
+    outputs:
+      sha: ${{ steps.label.outputs.sha }}
+      sha_full: ${{ steps.label.outputs.sha_full }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,10 +40,14 @@ jobs:
           submodules: recursive
 
       - name: Build label
+        id: label
         env:
           REF: ${{ inputs.ref }}
         run: |
-          echo "BUILD_LABEL=$(echo "$REF" | tr '/\\:' '---')-$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          sha=$(git rev-parse --short HEAD)
+          echo "BUILD_LABEL=$(echo "$REF" | tr '/\\:' '---')-${sha}" >> "$GITHUB_ENV"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "sha_full=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       # Qt from the official installer (universal binaries) instead of Homebrew,
       # since Homebrew no longer guarantees Intel bottles for large formulae like qt@6
@@ -117,6 +129,9 @@ jobs:
     name: Build Windows x64 (MSYS2)
     if: inputs.platform == 'all' || inputs.platform == 'windows'
     runs-on: windows-latest
+    outputs:
+      sha: ${{ steps.label.outputs.sha }}
+      sha_full: ${{ steps.label.outputs.sha_full }}
     defaults:
       run:
         shell: msys2 {0}
@@ -133,12 +148,16 @@ jobs:
           submodules: recursive
 
       - name: Build label
+        id: label
         shell: pwsh
         env:
           REF: ${{ inputs.ref }}
         run: |
-          $label = ($env:REF -replace '[/\\:]', '-') + '-' + (git rev-parse --short HEAD)
+          $sha = git rev-parse --short HEAD
+          $label = ($env:REF -replace '[/\\:]', '-') + '-' + $sha
           "BUILD_LABEL=$label" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "sha_full=$(git rev-parse HEAD)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - uses: msys2/setup-msys2@v2
         with:
@@ -241,3 +260,117 @@ jobs:
           path: chiaki-ng-windows-installer.exe
           if-no-files-found: error
           retention-days: 14
+
+  release:
+    name: Create GitHub Release
+    needs: [ build-mac_x86_64, build-windows_x64-msys2 ]
+    if: >-
+      always() && inputs.create_release &&
+      contains(needs.*.result, 'success') &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      url: ${{ steps.create.outputs.url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: chiaki-ng-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create or update release
+        id: create
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.ref }}
+          SHA: ${{ needs.build-mac_x86_64.outputs.sha_full || needs.build-windows_x64-msys2.outputs.sha_full }}
+        run: |
+          short="${SHA::7}"
+          safe_ref=$(echo "$REF" | tr '/\\: ' '----')
+          tag="build-${safe_ref}-${short}"
+
+          if [ -f dist/chiaki-ng-windows-installer.exe ]; then
+            mv dist/chiaki-ng-windows-installer.exe "dist/chiaki-ng-win_x64-installer-${safe_ref}-${short}.exe"
+          fi
+          ls -la dist
+
+          notes=$(printf 'Build tự động từ `%s` (commit %s).\n\n- macOS Intel: file `.dmg` (cần macOS 15 trở lên)\n- Windows x64: bản portable `.zip` và trình cài đặt `.exe`\n\nApp chưa được ký: trên macOS dùng System Settings > Privacy & Security > Open Anyway hoặc `xattr -cr /Applications/chiaki-ng.app`; trên Windows chọn More info > Run anyway.' "$REF" "$short")
+
+          if gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber -R "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" dist/* -R "$GITHUB_REPOSITORY" \
+              --target "$SHA" \
+              --title "chiaki-ng ${REF} (${short})" \
+              --notes "$notes" \
+              --prerelease
+          fi
+
+          echo "url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${tag}" >> "$GITHUB_OUTPUT"
+
+  notify-telegram:
+    name: Telegram notification
+    needs: [ build-mac_x86_64, build-windows_x64-msys2, release ]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram message
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          REF: ${{ inputs.ref }}
+          PLATFORM: ${{ inputs.platform }}
+          MAC_RESULT: ${{ needs.build-mac_x86_64.result }}
+          WIN_RESULT: ${{ needs.build-windows_x64-msys2.result }}
+          RELEASE_RESULT: ${{ needs.release.result }}
+          RELEASE_URL: ${{ needs.release.outputs.url }}
+          SHA: ${{ needs.build-mac_x86_64.outputs.sha || needs.build-windows_x64-msys2.outputs.sha || '-' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID secrets not set, skipping notification"
+            exit 0
+          fi
+
+          status() {
+            case "$1" in
+              success)   echo "Thành công" ;;
+              failure)   echo "LỖI" ;;
+              cancelled) echo "Đã hủy" ;;
+              skipped)   echo "Bỏ qua" ;;
+              *)         echo "$1" ;;
+            esac
+          }
+
+          if [ "$MAC_RESULT" = "failure" ] || [ "$WIN_RESULT" = "failure" ]; then
+            title="[LỖI] chiaki-ng build thất bại"
+          elif [ "$MAC_RESULT" = "cancelled" ] || [ "$WIN_RESULT" = "cancelled" ]; then
+            title="[HỦY] chiaki-ng build bị hủy"
+          elif [ "$RELEASE_RESULT" = "failure" ]; then
+            title="[LỖI] chiaki-ng build xong nhưng tạo Release thất bại"
+          else
+            title="[OK] chiaki-ng build thành công"
+          fi
+
+          if [ -n "$RELEASE_URL" ]; then
+            release_line="Release (tải không cần đăng nhập): ${RELEASE_URL}"
+          elif [ "$RELEASE_RESULT" = "failure" ]; then
+            release_line="Release: LỖI, xem log"
+          else
+            release_line="Release: không tạo"
+          fi
+
+          text=$(printf '%s\n\nNhánh: %s\nCommit: %s\nNền tảng: %s\n\nmacOS Intel: %s\nWindows x64: %s\n\n%s\n\nNgười chạy: %s\nLog / artifacts: %s' \
+            "$title" "$REF" "$SHA" "$PLATFORM" \
+            "$(status "$MAC_RESULT")" "$(status "$WIN_RESULT")" \
+            "$release_line" \
+            "$ACTOR" "$RUN_URL")
+
+          curl -sS --fail-with-body -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${text}" \
+            --data-urlencode "disable_web_page_preview=true"
