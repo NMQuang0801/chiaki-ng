@@ -25,6 +25,8 @@ jobs:
     if: inputs.platform == 'all' || inputs.platform == 'macos-intel'
     runs-on: macos-15-intel
     timeout-minutes: 360
+    outputs:
+      sha: ${{ steps.label.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,10 +34,13 @@ jobs:
           submodules: recursive
 
       - name: Build label
+        id: label
         env:
           REF: ${{ inputs.ref }}
         run: |
-          echo "BUILD_LABEL=$(echo "$REF" | tr '/\\:' '---')-$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          sha=$(git rev-parse --short HEAD)
+          echo "BUILD_LABEL=$(echo "$REF" | tr '/\\:' '---')-${sha}" >> "$GITHUB_ENV"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
 
       # Qt from the official installer (universal binaries) instead of Homebrew,
       # since Homebrew no longer guarantees Intel bottles for large formulae like qt@6
@@ -117,6 +122,8 @@ jobs:
     name: Build Windows x64 (MSYS2)
     if: inputs.platform == 'all' || inputs.platform == 'windows'
     runs-on: windows-latest
+    outputs:
+      sha: ${{ steps.label.outputs.sha }}
     defaults:
       run:
         shell: msys2 {0}
@@ -133,12 +140,15 @@ jobs:
           submodules: recursive
 
       - name: Build label
+        id: label
         shell: pwsh
         env:
           REF: ${{ inputs.ref }}
         run: |
-          $label = ($env:REF -replace '[/\\:]', '-') + '-' + (git rev-parse --short HEAD)
+          $sha = git rev-parse --short HEAD
+          $label = ($env:REF -replace '[/\\:]', '-') + '-' + $sha
           "BUILD_LABEL=$label" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - uses: msys2/setup-msys2@v2
         with:
@@ -241,3 +251,54 @@ jobs:
           path: chiaki-ng-windows-installer.exe
           if-no-files-found: error
           retention-days: 14
+
+  notify-telegram:
+    name: Telegram notification
+    needs: [ build-mac_x86_64, build-windows_x64-msys2 ]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram message
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          REF: ${{ inputs.ref }}
+          PLATFORM: ${{ inputs.platform }}
+          MAC_RESULT: ${{ needs.build-mac_x86_64.result }}
+          WIN_RESULT: ${{ needs.build-windows_x64-msys2.result }}
+          SHA: ${{ needs.build-mac_x86_64.outputs.sha || needs.build-windows_x64-msys2.outputs.sha || '-' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID secrets not set, skipping notification"
+            exit 0
+          fi
+
+          status() {
+            case "$1" in
+              success)   echo "Thành công" ;;
+              failure)   echo "LỖI" ;;
+              cancelled) echo "Đã hủy" ;;
+              skipped)   echo "Bỏ qua" ;;
+              *)         echo "$1" ;;
+            esac
+          }
+
+          if [ "$MAC_RESULT" = "failure" ] || [ "$WIN_RESULT" = "failure" ]; then
+            title="[LỖI] chiaki-ng build thất bại"
+          elif [ "$MAC_RESULT" = "cancelled" ] || [ "$WIN_RESULT" = "cancelled" ]; then
+            title="[HỦY] chiaki-ng build bị hủy"
+          else
+            title="[OK] chiaki-ng build thành công"
+          fi
+
+          text=$(printf '%s\n\nNhánh: %s\nCommit: %s\nNền tảng: %s\n\nmacOS Intel: %s\nWindows x64: %s\n\nNgười chạy: %s\nTải file / xem log: %s' \
+            "$title" "$REF" "$SHA" "$PLATFORM" \
+            "$(status "$MAC_RESULT")" "$(status "$WIN_RESULT")" \
+            "$ACTOR" "$RUN_URL")
+
+          curl -sS --fail-with-body -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${text}" \
+            --data-urlencode "disable_web_page_preview=true"
