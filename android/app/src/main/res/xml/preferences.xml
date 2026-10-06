@@ -19,6 +19,12 @@
             app:summary="@string/preferences_swap_cross_moon_summary"
             app:icon="@drawable/ic_gamepad" />
 
+        <ListPreference
+            app:key="@string/preferences_controller_layout_key"
+            app:title="@string/preferences_controller_layout_title"
+            app:summary="%s"
+            app:icon="@drawable/ic_gamepad" />
+
         <SwitchPreference
             app:key="@string/preferences_rumble_enabled_key"
             app:title="@string/preferences_rumble_enabled_title"

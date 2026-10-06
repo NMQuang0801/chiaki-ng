@@ -105,6 +105,10 @@
     <string name="display_hosts_empty_discovery_on_info">No consoles added or discovered.</string>
     <string name="stream_on_screen_controls">On-Screen Controls</string>
     <string name="stream_touchpad_only">Touchpad only</string>
+    <string name="preferences_controller_layout_title">Controller Layout</string>
+    <string name="preferences_controller_layout_auto">Automatic</string>
+    <string name="preferences_controller_layout_standard">Standard (Xbox / Android)</string>
+    <string name="preferences_controller_layout_playstation_raw">PlayStation without Android mapping (e.g. DualSense before Android 12)</string>
     <string name="preferences_idr_on_fec_failure_title">Request IDR Frame on FEC Failure</string>
     <string name="preferences_idr_on_fec_failure_summary">Ask the console for a new keyframe when a frame cannot be repaired, so the picture recovers faster on unstable networks</string>
 
@@ -124,4 +128,5 @@
     <string name="preferences_bitrate_key">stream_bitrate</string>
     <string name="preferences_codec_key">stream_codec</string>
     <string name="preferences_idr_on_fec_failure_key">stream_idr_on_fec_failure</string>
+    <string name="preferences_controller_layout_key">controller_layout</string>
 </resources>

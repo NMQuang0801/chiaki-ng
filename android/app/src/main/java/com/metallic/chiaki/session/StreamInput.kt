@@ -10,6 +10,8 @@ import androidx.lifecycle.OnLifecycleEvent
 import com.metallic.chiaki.common.Preferences
 import com.metallic.chiaki.lib.ControllerState
 
+private const val SONY_VENDOR_ID = 0x054C
+
 class StreamInput(val context: Context, val preferences: Preferences)
 {
 	var controllerStateChangedCallback: ((ControllerState) -> Unit)? = null
@@ -54,6 +56,63 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		}
 
 	private val swapCrossMoon = preferences.swapCrossMoon
+	private val controllerLayout = preferences.controllerLayout
+	private val rawPlayStationLayoutByDevice = mutableMapOf<Int, Boolean>()
+
+	private fun usesRawPlayStationLayout(device: InputDevice?): Boolean = when(controllerLayout)
+	{
+		Preferences.ControllerLayout.STANDARD -> false
+		Preferences.ControllerLayout.PLAYSTATION_RAW -> true
+		Preferences.ControllerLayout.AUTO ->
+			device != null && rawPlayStationLayoutByDevice.getOrPut(device.id) { detectRawPlayStationLayout(device) }
+	}
+
+	/**
+	 * Without a vendor key layout (e.g. DualSense before Android 12), Android exposes a Sony controller's
+	 * HID buttons in report order: Square = BUTTON_A, Cross = BUTTON_B, Circle = BUTTON_C, ...
+	 * A properly mapped controller never reports BUTTON_C or BUTTON_Z.
+	 */
+	private fun detectRawPlayStationLayout(device: InputDevice): Boolean
+	{
+		if(device.vendorId != SONY_VENDOR_ID)
+			return false
+		val hasKeys = device.hasKeys(KeyEvent.KEYCODE_BUTTON_C, KeyEvent.KEYCODE_BUTTON_Z)
+		return hasKeys[0] && hasKeys[1]
+	}
+
+	private fun standardButtonMask(keyCode: Int): UInt? = when(keyCode)
+	{
+		KeyEvent.KEYCODE_BUTTON_A -> if(swapCrossMoon) ControllerState.BUTTON_MOON else ControllerState.BUTTON_CROSS
+		KeyEvent.KEYCODE_BUTTON_B -> if(swapCrossMoon) ControllerState.BUTTON_CROSS else ControllerState.BUTTON_MOON
+		KeyEvent.KEYCODE_BUTTON_X -> if(swapCrossMoon) ControllerState.BUTTON_PYRAMID else ControllerState.BUTTON_BOX
+		KeyEvent.KEYCODE_BUTTON_Y -> if(swapCrossMoon) ControllerState.BUTTON_BOX else ControllerState.BUTTON_PYRAMID
+		KeyEvent.KEYCODE_BUTTON_L1 -> ControllerState.BUTTON_L1
+		KeyEvent.KEYCODE_BUTTON_R1 -> ControllerState.BUTTON_R1
+		KeyEvent.KEYCODE_BUTTON_THUMBL -> ControllerState.BUTTON_L3
+		KeyEvent.KEYCODE_BUTTON_THUMBR -> ControllerState.BUTTON_R3
+		KeyEvent.KEYCODE_BUTTON_SELECT -> ControllerState.BUTTON_SHARE
+		KeyEvent.KEYCODE_BUTTON_START -> ControllerState.BUTTON_OPTIONS
+		KeyEvent.KEYCODE_BUTTON_C -> ControllerState.BUTTON_PS
+		KeyEvent.KEYCODE_BUTTON_MODE -> ControllerState.BUTTON_PS
+		else -> null
+	}
+
+	private fun rawPlayStationButtonMask(keyCode: Int): UInt? = when(keyCode)
+	{
+		KeyEvent.KEYCODE_BUTTON_A -> ControllerState.BUTTON_BOX
+		KeyEvent.KEYCODE_BUTTON_B -> ControllerState.BUTTON_CROSS
+		KeyEvent.KEYCODE_BUTTON_C -> ControllerState.BUTTON_MOON
+		KeyEvent.KEYCODE_BUTTON_X -> ControllerState.BUTTON_PYRAMID
+		KeyEvent.KEYCODE_BUTTON_Y -> ControllerState.BUTTON_L1
+		KeyEvent.KEYCODE_BUTTON_Z -> ControllerState.BUTTON_R1
+		KeyEvent.KEYCODE_BUTTON_L2 -> ControllerState.BUTTON_SHARE
+		KeyEvent.KEYCODE_BUTTON_R2 -> ControllerState.BUTTON_OPTIONS
+		KeyEvent.KEYCODE_BUTTON_SELECT -> ControllerState.BUTTON_L3
+		KeyEvent.KEYCODE_BUTTON_START -> ControllerState.BUTTON_R3
+		KeyEvent.KEYCODE_BUTTON_MODE -> ControllerState.BUTTON_PS
+		KeyEvent.KEYCODE_BUTTON_THUMBL -> ControllerState.BUTTON_TOUCHPAD
+		else -> null
+	}
 
 	private val sensorEventListener = object: SensorEventListener {
 		override fun onSensorChanged(event: SensorEvent)
@@ -126,39 +185,28 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		if(event.action != KeyEvent.ACTION_DOWN && event.action != KeyEvent.ACTION_UP)
 			return false
 
+		val raw = usesRawPlayStationLayout(event.device)
+		val pressed = event.action == KeyEvent.ACTION_DOWN
+		val (l2Key, r2Key) =
+			if(raw) KeyEvent.KEYCODE_BUTTON_L1 to KeyEvent.KEYCODE_BUTTON_R1
+			else KeyEvent.KEYCODE_BUTTON_L2 to KeyEvent.KEYCODE_BUTTON_R2
 		when(event.keyCode)
 		{
-			KeyEvent.KEYCODE_BUTTON_L2 -> {
-				keyControllerState.l2State = if(event.action == KeyEvent.ACTION_DOWN) UByte.MAX_VALUE else 0U
+			l2Key -> {
+				keyControllerState.l2State = if(pressed) UByte.MAX_VALUE else 0U
+				controllerStateUpdated()
 				return true
 			}
-			KeyEvent.KEYCODE_BUTTON_R2 -> {
-				keyControllerState.r2State = if(event.action == KeyEvent.ACTION_DOWN) UByte.MAX_VALUE else 0U
+			r2Key -> {
+				keyControllerState.r2State = if(pressed) UByte.MAX_VALUE else 0U
+				controllerStateUpdated()
 				return true
 			}
 		}
 
-		val buttonMask: UInt = when(event.keyCode)
-		{
-			// dpad handled by MotionEvents
-			//KeyEvent.KEYCODE_DPAD_LEFT -> ControllerState.BUTTON_DPAD_LEFT
-			//KeyEvent.KEYCODE_DPAD_RIGHT -> ControllerState.BUTTON_DPAD_RIGHT
-			//KeyEvent.KEYCODE_DPAD_UP -> ControllerState.BUTTON_DPAD_UP
-			//KeyEvent.KEYCODE_DPAD_DOWN -> ControllerState.BUTTON_DPAD_DOWN
-			KeyEvent.KEYCODE_BUTTON_A -> if(swapCrossMoon) ControllerState.BUTTON_MOON else ControllerState.BUTTON_CROSS
-			KeyEvent.KEYCODE_BUTTON_B -> if(swapCrossMoon) ControllerState.BUTTON_CROSS else ControllerState.BUTTON_MOON
-			KeyEvent.KEYCODE_BUTTON_X -> if(swapCrossMoon) ControllerState.BUTTON_PYRAMID else ControllerState.BUTTON_BOX
-			KeyEvent.KEYCODE_BUTTON_Y -> if(swapCrossMoon) ControllerState.BUTTON_BOX else ControllerState.BUTTON_PYRAMID
-			KeyEvent.KEYCODE_BUTTON_L1 -> ControllerState.BUTTON_L1
-			KeyEvent.KEYCODE_BUTTON_R1 -> ControllerState.BUTTON_R1
-			KeyEvent.KEYCODE_BUTTON_THUMBL -> ControllerState.BUTTON_L3
-			KeyEvent.KEYCODE_BUTTON_THUMBR -> ControllerState.BUTTON_R3
-			KeyEvent.KEYCODE_BUTTON_SELECT -> ControllerState.BUTTON_SHARE
-			KeyEvent.KEYCODE_BUTTON_START -> ControllerState.BUTTON_OPTIONS
-			KeyEvent.KEYCODE_BUTTON_C -> ControllerState.BUTTON_PS
-			KeyEvent.KEYCODE_BUTTON_MODE -> ControllerState.BUTTON_PS
-			else -> return false
-		}
+		// dpad is handled by MotionEvents
+		val buttonMask = (if(raw) rawPlayStationButtonMask(event.keyCode) else standardButtonMask(event.keyCode))
+			?: return false
 
 		keyControllerState.buttons = keyControllerState.buttons.run {
 			when(event.action)
@@ -179,12 +227,21 @@ class StreamInput(val context: Context, val preferences: Preferences)
 			return false
 		fun Float.signedAxis() = (this * Short.MAX_VALUE).toInt().toShort()
 		fun Float.unsignedAxis() = (this * UByte.MAX_VALUE.toFloat()).toUInt().toUByte()
+		fun triggerAxis(axis: Int): Float
+		{
+			val value = event.getAxisValue(axis)
+			val range = event.device?.getMotionRange(axis, event.source) ?: return value.coerceIn(0f, 1f)
+			if(range.range <= 0f)
+				return value.coerceIn(0f, 1f)
+			return ((value - range.min) / range.range).coerceIn(0f, 1f)
+		}
+		val raw = usesRawPlayStationLayout(event.device)
 		motionControllerState.leftX = event.getAxisValue(MotionEvent.AXIS_X).signedAxis()
 		motionControllerState.leftY = event.getAxisValue(MotionEvent.AXIS_Y).signedAxis()
 		motionControllerState.rightX = event.getAxisValue(MotionEvent.AXIS_Z).signedAxis()
 		motionControllerState.rightY = event.getAxisValue(MotionEvent.AXIS_RZ).signedAxis()
-		motionControllerState.l2State = event.getAxisValue(MotionEvent.AXIS_LTRIGGER).unsignedAxis()
-		motionControllerState.r2State = event.getAxisValue(MotionEvent.AXIS_RTRIGGER).unsignedAxis()
+		motionControllerState.l2State = triggerAxis(if(raw) MotionEvent.AXIS_RX else MotionEvent.AXIS_LTRIGGER).unsignedAxis()
+		motionControllerState.r2State = triggerAxis(if(raw) MotionEvent.AXIS_RY else MotionEvent.AXIS_RTRIGGER).unsignedAxis()
 		motionControllerState.buttons = motionControllerState.buttons.let {
 			val dpadX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
 			val dpadY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)

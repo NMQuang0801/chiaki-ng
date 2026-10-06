@@ -39,8 +39,17 @@ class Preferences(context: Context)
 		CODEC_H265("h265", R.string.preferences_codec_title_h265, com.metallic.chiaki.lib.Codec.CODEC_H265)
 	}
 
+	enum class ControllerLayout(val value: String, @StringRes val title: Int)
+	{
+		AUTO("auto", R.string.preferences_controller_layout_auto),
+		STANDARD("standard", R.string.preferences_controller_layout_standard),
+		PLAYSTATION_RAW("playstation_raw", R.string.preferences_controller_layout_playstation_raw)
+	}
+
 	companion object
 	{
+		val controllerLayoutDefault = ControllerLayout.AUTO
+		val controllerLayoutAll = ControllerLayout.values()
 		val resolutionDefault = Resolution.RES_720P
 		val resolutionAll = Resolution.values()
 		val fpsDefault = FPS.FPS_60
@@ -98,6 +107,13 @@ class Preferences(context: Context)
 	var swapCrossMoon
 		get() = sharedPreferences.getBoolean(swapCrossMoonKey, false)
 		set(value) { sharedPreferences.edit().putBoolean(swapCrossMoonKey, value).apply() }
+
+	val controllerLayoutKey get() = resources.getString(R.string.preferences_controller_layout_key)
+	var controllerLayout
+		get() = sharedPreferences.getString(controllerLayoutKey, controllerLayoutDefault.value)?.let { value ->
+			ControllerLayout.values().firstOrNull { it.value == value }
+		} ?: controllerLayoutDefault
+		set(value) { sharedPreferences.edit().putString(controllerLayoutKey, value.value).apply() }
 
 	val resolutionKey get() = resources.getString(R.string.preferences_resolution_key)
 	var resolution

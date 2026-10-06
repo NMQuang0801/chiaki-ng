@@ -27,6 +27,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		preferences.rumbleEnabledKey -> preferences.rumbleEnabled
 		preferences.motionEnabledKey -> preferences.motionEnabled
 		preferences.buttonHapticEnabledKey -> preferences.buttonHapticEnabled
+		preferences.idrOnFecFailureKey -> preferences.idrOnFecFailure
 		else -> defValue
 	}
 
@@ -39,6 +40,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 			preferences.rumbleEnabledKey -> preferences.rumbleEnabled = value
 			preferences.motionEnabledKey -> preferences.motionEnabled = value
 			preferences.buttonHapticEnabledKey -> preferences.buttonHapticEnabled = value
+			preferences.idrOnFecFailureKey -> preferences.idrOnFecFailure = value
 		}
 	}
 
@@ -48,6 +50,7 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		preferences.fpsKey -> preferences.fps.value
 		preferences.bitrateKey -> preferences.bitrate?.toString() ?: ""
 		preferences.codecKey -> preferences.codec.value
+		preferences.controllerLayoutKey -> preferences.controllerLayout.value
 		else -> defValue
 	}
 
@@ -71,6 +74,11 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 				val codec = Preferences.Codec.values().firstOrNull { it.value == value } ?: return
 				preferences.codec = codec
 			}
+			preferences.controllerLayoutKey ->
+			{
+				val layout = Preferences.ControllerLayout.values().firstOrNull { it.value == value } ?: return
+				preferences.controllerLayout = layout
+			}
 		}
 	}
 }
@@ -92,6 +100,11 @@ class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 		val preferences = viewModel.preferences
 		preferenceManager.preferenceDataStore = DataStore(preferences)
 		setPreferencesFromResource(R.xml.preferences, rootKey)
+
+		preferenceScreen.findPreference<ListPreference>(getString(R.string.preferences_controller_layout_key))?.let {
+			it.entryValues = Preferences.controllerLayoutAll.map { layout -> layout.value }.toTypedArray()
+			it.entries = Preferences.controllerLayoutAll.map { layout -> getString(layout.title) }.toTypedArray()
+		}
 
 		preferenceScreen.findPreference<ListPreference>(getString(R.string.preferences_resolution_key))?.let {
 			it.entryValues = Preferences.resolutionAll.map { res -> res.value }.toTypedArray()
