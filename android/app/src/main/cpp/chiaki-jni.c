@@ -271,6 +271,9 @@ JNIEXPORT void JNICALL JNI_FCN(sessionCreate)(JNIEnv *env, jobject obj, jobject 
 	connect_info.video_profile.codec = (ChiakiCodec)target_value;
 
 	connect_info.video_profile_auto_downgrade = true;
+	connect_info.enable_idr_on_fec_failure = E->GetBooleanField(env, connect_info_obj, E->GetFieldID(env, connect_info_class, "enableIdrOnFecFailure", "Z"));
+	// Without this the congestion report is clamped to 0% loss and the console never lowers the bitrate.
+	connect_info.packet_loss_max = 0.05;
 
 	session = CHIAKI_NEW(AndroidChiakiSession);
 	if(!session)

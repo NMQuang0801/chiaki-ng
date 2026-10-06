@@ -1,0 +1,101 @@
+name: Build chiaki-ng Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Nhánh / tag / commit cần build'
+        required: false
+        default: ''
+        type: string
+  workflow_call:
+    inputs:
+      ref:
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      NDK_VERSION: '28.2.13676358'
+      CMAKE_VERSION: '3.22.1'
+      GRADLE_VERSION: '8.11.1'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install python protobuf
+        run: pip install protobuf
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" --install "platforms;android-35" "build-tools;35.0.0" \
+            "ndk;${NDK_VERSION}" "cmake;${CMAKE_VERSION}" > /dev/null
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+
+      - name: Configure signing
+        working-directory: android
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "sdk.dir=${ANDROID_HOME}" > local.properties
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::warning::Chưa có secret ANDROID_KEYSTORE_B64: APK được ký bằng khóa debug, bản sau sẽ không cài đè được"
+            exit 0
+          fi
+          keystore="${RUNNER_TEMP}/chiaki-release.p12"
+          printf '%s' "$KEYSTORE_B64" | tr -d '[:space:]' | base64 -d > "$keystore"
+          {
+            echo "chiakiKeystore=${keystore}"
+            echo "chiakiKeystoreType=pkcs12"
+            echo "chiakiKeystorePW=${KEYSTORE_PASSWORD}"
+            echo "chiakiKeyAlias=${KEY_ALIAS}"
+            echo "chiakiKeyPW=${KEY_PASSWORD}"
+          } >> local.properties
+
+      - name: Build APK
+        working-directory: android
+        env:
+          CHIAKI_VERSION_CODE: ${{ github.run_number }}
+        run: gradle --no-daemon --stacktrace assembleRelease
+
+      - name: Collect APK
+        run: |
+          apk=$(find android/app/build/outputs/apk/release -name '*.apk' | head -n 1)
+          if [ -z "$apk" ]; then
+            echo "::error::Không tìm thấy file APK"
+            exit 1
+          fi
+          cp "$apk" chiaki-ng-android.apk
+          ls -la chiaki-ng-android.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: chiaki-ng-android-Release
+          path: chiaki-ng-android.apk
+          retention-days: 14

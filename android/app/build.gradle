@@ -28,8 +28,11 @@ android {
         applicationId "com.metallic.chiaki"
         minSdk 24
         targetSdk 35
-        versionCode 12
+        versionCode System.getenv("CHIAKI_VERSION_CODE")?.toInteger() ?: 12
         versionName chiakiVersion
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
         externalNativeBuild {
             cmake {
                 arguments "-DCHIAKI_ENABLE_TESTS=OFF",
@@ -55,6 +58,10 @@ android {
     buildFeatures {
         viewBinding true
         prefab true
+    }
+
+    lint {
+        disable 'MissingTranslation'
     }
 
     compileOptions {
@@ -99,8 +106,11 @@ android {
         signingConfigs.release.storePassword = properties.get("chiakiKeystorePW")
         signingConfigs.release.keyAlias = properties.get("chiakiKeyAlias")
         signingConfigs.release.keyPassword = properties.get("chiakiKeyPW")
+        if(properties.containsKey("chiakiKeystoreType"))
+            signingConfigs.release.storeType = properties.get("chiakiKeystoreType")
     } else {
-        println("Signing not enabled")
+        println("Release key not configured, signing release with the debug key")
+        buildTypes.release.signingConfig = signingConfigs.debug
     }
 }
 

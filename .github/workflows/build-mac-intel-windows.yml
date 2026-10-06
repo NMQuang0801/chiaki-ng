@@ -24,6 +24,7 @@ on:
           - 'Windows arm64 MSYS2 | build-msys2-arm.yml'
           - 'Windows arm64 VC | build-windows-arm.yml'
           - 'Windows arm64 VC portable | build-windows-arm-portable.yml'
+          - 'Android APK | build-android.yml'
       create_release:
         description: 'Tạo GitHub Release (giữ file lâu dài, tải không cần đăng nhập)'
         required: false
@@ -140,6 +141,15 @@ jobs:
     with:
       ref: ${{ needs.prepare.outputs.sha_full }}
 
+  build-android:
+    name: Android APK
+    needs: prepare
+    if: endsWith(inputs.target, '| build-android.yml')
+    uses: ./.github/workflows/build-android.yml
+    secrets: inherit
+    with:
+      ref: ${{ needs.prepare.outputs.sha_full }}
+
   release:
     name: Create GitHub Release
     needs:
@@ -153,6 +163,7 @@ jobs:
       - build-msys2-arm
       - build-windows-arm
       - build-windows-arm-portable
+      - build-android
     if: >-
       always() && inputs.create_release &&
       needs.prepare.result == 'success' &&
@@ -191,6 +202,7 @@ jobs:
               *.dmg) new="${prefix}.dmg" ;;
               *.exe) new="${prefix}-installer.exe" ;;
               *.zip) new="${prefix}-portable.zip" ;;
+              *.apk) new="${prefix}.apk" ;;
               *)     new="${prefix}-${base}" ;;
             esac
             mv "$f" "out/${new}"
@@ -201,7 +213,7 @@ jobs:
             exit 1
           fi
 
-          notes=$(printf 'Build tự động từ `%s` (commit %s).\n\nApp chưa được ký: trên macOS dùng System Settings > Privacy & Security > Open Anyway hoặc `xattr -cr /Applications/chiaki-ng.app`; trên Windows chọn More info > Run anyway.' "$REF" "$short")
+          notes=$(printf 'Build tự động từ `%s` (commit %s).\n\nApp chưa được ký: trên macOS dùng System Settings > Privacy & Security > Open Anyway hoặc `xattr -cr /Applications/chiaki-ng.app`; trên Windows chọn More info > Run anyway; trên Android cho phép cài ứng dụng từ nguồn không xác định.' "$REF" "$short")
 
           if gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" out/* --clobber -R "$GITHUB_REPOSITORY"
@@ -228,12 +240,21 @@ jobs:
       - build-msys2-arm
       - build-windows-arm
       - build-windows-arm-portable
+      - build-android
       - release
     if: always()
     runs-on: ubuntu-latest
     permissions:
       actions: read
     steps:
+      - name: Download Android APK
+        if: needs.build-android.result == 'success'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: chiaki-ng-android-Release
+          path: apk
+
       - name: Send Telegram message
         env:
           GH_TOKEN: ${{ github.token }}
@@ -402,4 +423,20 @@ jobs:
               -F "document=@${f}" \
               --form-string "caption=Log lỗi ${REF} (${SHA}): $(basename "$f")" \
               || echo "::warning::Gửi file $f lên Telegram thất bại"
+          done
+
+          for f in apk/*.apk; do
+            [ -f "$f" ] || continue
+            safe_ref=$(echo "$REF" | tr '/\\: ' '----')
+            named="apk/chiaki-ng-android-${safe_ref}-${SHA}.apk"
+            mv "$f" "$named"
+            if [ "$(stat -c %s "$named")" -gt 49000000 ]; then
+              echo "::warning::APK lớn hơn 49 MB, Telegram không nhận; tải trong artifacts của run"
+              continue
+            fi
+            tg sendDocument \
+              --form-string "chat_id=${TELEGRAM_CHAT_ID}" \
+              -F "document=@${named}" \
+              --form-string "caption=APK Android ${REF} (${SHA})" \
+              || echo "::warning::Gửi APK lên Telegram thất bại"
           done

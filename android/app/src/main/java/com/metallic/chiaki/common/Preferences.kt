@@ -129,6 +129,11 @@ class Preferences(context: Context)
 		}  ?: codecDefault
 		set(value) { sharedPreferences.edit().putString(codecKey, value.value).apply() }
 
+	val idrOnFecFailureKey get() = resources.getString(R.string.preferences_idr_on_fec_failure_key)
+	var idrOnFecFailure
+		get() = sharedPreferences.getBoolean(idrOnFecFailureKey, true)
+		set(value) { sharedPreferences.edit().putBoolean(idrOnFecFailureKey, value).apply() }
+
 	private val videoProfileDefaultBitrate get() = ConnectVideoProfile.preset(resolution.preset, fps.preset, codec.codec)
 	val videoProfile get() = videoProfileDefaultBitrate.let {
 		val bitrate = bitrate

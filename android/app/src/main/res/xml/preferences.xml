@@ -76,6 +76,13 @@
             app:title="@string/preferences_codec_title"
             app:summary="%s"
             app:icon="@drawable/ic_codec"/>
+
+        <SwitchPreference
+            app:key="@string/preferences_idr_on_fec_failure_key"
+            app:title="@string/preferences_idr_on_fec_failure_title"
+            app:summary="@string/preferences_idr_on_fec_failure_summary"
+            app:defaultValue="true"
+            app:icon="@drawable/ic_codec" />
     </PreferenceCategory>
 
     <PreferenceCategory
