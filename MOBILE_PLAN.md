@@ -244,6 +244,6 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 | 2026-10-07 | Tạo khóa ký APK, workflow `build-android.yml`, gắn vào bảng chọn build, gửi APK qua Telegram | Chờ người dùng thêm secrets và chạy build lần đầu |
 | 2026-10-07 | Tiếng Việt cho app Android, tùy chọn xin keyframe khi mất gói, sửa `packet_loss_max = 0`     | Chờ build kiểm tra                                |
 | 2026-10-07 | Sửa CI: bỏ kiểm tra wrapper jar của oboe, cài `protoc` 29.3 | Build APK thành công, đăng ký PS5 thành công trên điện thoại thật (Android 11), xem được hình |
-| 2026-10-07 | Sửa nút ảo không hoạt động; thêm "Kiểu tay cầm", tự nhận DualSense/DualShock bị Android ánh xạ thô (DualSense Bluetooth trên Android 11 bị lệch nút); sửa công tắc "Xin keyframe khi mất gói" không lưu | Chờ build và test lại |
+| 2026-10-07 | Sửa nút ảo không hoạt động; thêm "Kiểu tay cầm", tự nhận DualSense/DualShock bị Android ánh xạ thô (DualSense Bluetooth trên Android 11 bị lệch nút); sửa công tắc "Xin keyframe khi mất gói" không lưu | Đã test OK: nút ảo và DualSense Bluetooth bấm đúng |
 
 
