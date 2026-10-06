@@ -40,6 +40,8 @@ int main(int argc, char *argv[]) { return real_main(argc, argv); }
 #include <QCommandLineParser>
 #include <QMap>
 #include <QSurfaceFormat>
+#include <QTranslator>
+#include <QLocale>
 
 Q_DECLARE_METATYPE(ChiakiLogLevel)
 Q_DECLARE_METATYPE(ChiakiRegistEventType)
@@ -130,6 +132,12 @@ int real_main(int argc, char *argv[])
 #else
 	QGuiApplication::setWindowIcon(QIcon(":/icons/chiaking.svg"));
 #endif
+
+	QTranslator translator;
+	const QString language = Settings::GetLanguage();
+	const QLocale ui_locale = language.isEmpty() ? QLocale::system() : QLocale(language);
+	if(translator.load(ui_locale, QStringLiteral("chiaki"), QStringLiteral("_"), QStringLiteral(":/i18n")))
+		app.installTranslator(&translator);
 
 	QCommandLineParser parser;
 	parser.setOptionsAfterPositionalArgumentsMode(QCommandLineParser::ParseAsPositionalArguments);

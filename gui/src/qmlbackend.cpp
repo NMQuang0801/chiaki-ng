@@ -47,6 +47,24 @@ static bool detailedVerboseTelemetryEnabled()
 
 #define CHIAKI_NOISY_DEBUG() if (!detailedVerboseTelemetryEnabled()) {} else qCDebug(chiakiGui)
 
+// Must match the strings returned by chiaki_quit_reason_string() in lib/src/session.c
+[[maybe_unused]] static const char *const quit_reason_strings[] = {
+    QT_TRANSLATE_NOOP("ChiakiQuitReason", "Stopped"),
+    QT_TRANSLATE_NOOP("ChiakiQuitReason", "Unknown Session Request Error"),
+    QT_TRANSLATE_NOOP("ChiakiQuitReason", "Connection Refused in Session Request"),
+    QT_TRANSLATE_NOOP("ChiakiQuitReason", "Remote Play on Console is already in use"),
+    QT_TRANSLATE_NOOP("ChiakiQuitReason", "Remote Play on Console has crashed"),
+    QT_TRANSLATE_NOOP("ChiakiQuitReason", "RP-Version mismatch"),
+    QT_TRANSLATE_NOOP("ChiakiQuitReason", "Unknown Ctrl Error"),
+    QT_TRANSLATE_NOOP("ChiakiQuitReason", "Connection Refused in Ctrl"),
+    QT_TRANSLATE_NOOP("ChiakiQuitReason", "Ctrl failed to connect"),
+    QT_TRANSLATE_NOOP("ChiakiQuitReason", "Unknown Error in Stream Connection"),
+    QT_TRANSLATE_NOOP("ChiakiQuitReason", "Remote has disconnected from Stream Connection"),
+    QT_TRANSLATE_NOOP("ChiakiQuitReason", "Remote has disconnected from Stream Connection the because Server shut down"),
+    QT_TRANSLATE_NOOP("ChiakiQuitReason", "The Console Registration using PSN has failed"),
+    QT_TRANSLATE_NOOP("ChiakiQuitReason", "Unknown"),
+};
+
 static void logDecoderDeliveryStats(qint64 now_us, int32_t frames_lost, bool recovered)
 {
     static qint64 last_sample_us = 0;
@@ -1149,7 +1167,7 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
             return;
 
         if (chiaki_quit_reason_is_error(reason)) {
-            QString m = tr("Chiaki Session has quit") + ":\n" + chiaki_quit_reason_string(reason);
+            QString m = tr("Chiaki Session has quit") + ":\n" + QCoreApplication::translate("ChiakiQuitReason", chiaki_quit_reason_string(reason));
             if (!reason_str.isEmpty())
                 m += "\n" + tr("Reason") + ": \"" + reason_str + "\"";
             emit sessionError(tr("Session has quit"), m);
@@ -1684,14 +1702,14 @@ bool QmlBackend::handlePsnLoginRedirect(const QUrl &url)
 {
     if (!url.toString().startsWith(QString::fromStdString(PSNAuth::REDIRECT_PAGE)))
     {
-        emit psnLoginAccountIdError(QString("Redirect URL invalid does not start with:\n") + QString::fromStdString(PSNAuth::REDIRECT_PAGE));
+        emit psnLoginAccountIdError(tr("Redirect URL invalid does not start with:\n") + QString::fromStdString(PSNAuth::REDIRECT_PAGE));
         return false;
     }
 
     const QString code = QUrlQuery(url).queryItemValue("code");
     if (code.isEmpty()) {
         qCWarning(chiakiGui) << "Invalid code from redirect url";
-        emit psnLoginAccountIdError("Redirect URL invalid");
+        emit psnLoginAccountIdError(tr("Redirect URL invalid"));
         return false;
     }
     PSNAccountID *psnId = new PSNAccountID(settings, this);

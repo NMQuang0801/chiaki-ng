@@ -163,12 +163,12 @@ public:
         valueFont.setPixelSize(18);
         valueFont.setBold(true);
 
-        bitrateRow = makeRow(tr("Mbps"), QColor(QStringLiteral("#00a7ff")), titleFont, valueFont, bitrateValue);
-        queueRow = makeRow(tr("queue depth avg"), QColor(QStringLiteral("#90caf9")), titleFont, valueFont, queueDepthValue);
-        pendingRow = makeRow(tr("pending frame age"), QColor(QStringLiteral("#90caf9")), titleFont, valueFont, pendingAgeValue);
-        packetLossRow = makeRow(tr("packet loss"), QColor(QStringLiteral("#ef9a9a")), titleFont, valueFont, packetLossValue);
-        droppedFramesRow = makeRow(tr("dropped frames"), QColor(QStringLiteral("#ef9a9a")), titleFont, valueFont, droppedFramesValue);
-        lostFramesRow = makeRow(tr("lost frames"), QColor(QStringLiteral("#ef9a9a")), titleFont, valueFont, lostFramesValue);
+        bitrateRow = makeRow(QCoreApplication::translate("StatsOverlayWidget", "Mbps"), QColor(QStringLiteral("#00a7ff")), titleFont, valueFont, bitrateValue);
+        queueRow = makeRow(QCoreApplication::translate("StatsOverlayWidget", "queue depth avg"), QColor(QStringLiteral("#90caf9")), titleFont, valueFont, queueDepthValue);
+        pendingRow = makeRow(QCoreApplication::translate("StatsOverlayWidget", "pending frame age"), QColor(QStringLiteral("#90caf9")), titleFont, valueFont, pendingAgeValue);
+        packetLossRow = makeRow(QCoreApplication::translate("StatsOverlayWidget", "packet loss"), QColor(QStringLiteral("#ef9a9a")), titleFont, valueFont, packetLossValue);
+        droppedFramesRow = makeRow(QCoreApplication::translate("StatsOverlayWidget", "dropped frames"), QColor(QStringLiteral("#ef9a9a")), titleFont, valueFont, droppedFramesValue);
+        lostFramesRow = makeRow(QCoreApplication::translate("StatsOverlayWidget", "lost frames"), QColor(QStringLiteral("#ef9a9a")), titleFont, valueFont, lostFramesValue);
 
         outer->addWidget(panel, 0, Qt::AlignRight | Qt::AlignVCenter);
 
@@ -249,7 +249,7 @@ public:
         queueRow->setVisible(true);
         queueDepthValue->setText(QString::number(owner ? owner->queueDepthAverage() : 0.0, 'f', 1));
         pendingRow->setVisible(true);
-        pendingAgeValue->setText(tr("%1 ms").arg((owner ? owner->pendingFrameAge() : 0.0) * 1000.0, 0, 'f', 0));
+        pendingAgeValue->setText(QCoreApplication::translate("StatsOverlayWidget", "%1 ms").arg((owner ? owner->pendingFrameAge() : 0.0) * 1000.0, 0, 'f', 0));
 
         packetLossRow->setVisible(hasSession);
         if (hasSession) {

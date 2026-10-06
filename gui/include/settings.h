@@ -408,6 +408,10 @@ class Settings : public QObject
 		QString GetAudioOutDevice() const;
 		void SetAudioOutDevice(QString device_name);
 
+		/** Application-wide (not per profile). Empty string means follow the system language. */
+		static QString GetLanguage();
+		static void SetLanguage(const QString &language);
+
 		QString GetAudioInDevice() const;
 		void SetAudioInDevice(QString device_name);
 

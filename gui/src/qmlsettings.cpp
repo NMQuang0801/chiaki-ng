@@ -566,6 +566,17 @@ void QmlSettings::setAudioOutDevice(const QString &device)
     emit audioOutDeviceChanged();
 }
 
+QString QmlSettings::language() const
+{
+    return Settings::GetLanguage();
+}
+
+void QmlSettings::setLanguage(const QString &language)
+{
+    Settings::SetLanguage(language);
+    emit languageChanged();
+}
+
 QString QmlSettings::decoder() const
 {
     return settings->GetHardwareDecoder();

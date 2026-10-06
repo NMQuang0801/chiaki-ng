@@ -52,6 +52,7 @@ class QmlSettings : public QObject
     Q_PROPERTY(int audioVolume READ audioVolume WRITE setAudioVolume NOTIFY audioVolumeChanged)
     Q_PROPERTY(QString audioInDevice READ audioInDevice WRITE setAudioInDevice NOTIFY audioInDeviceChanged)
     Q_PROPERTY(QString audioOutDevice READ audioOutDevice WRITE setAudioOutDevice NOTIFY audioOutDeviceChanged)
+    Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     Q_PROPERTY(QString decoder READ decoder WRITE setDecoder NOTIFY decoderChanged)
     Q_PROPERTY(bool useZeroCopy READ useZeroCopy WRITE setUseZeroCopy NOTIFY useZeroCopyChanged)
     Q_PROPERTY(bool vulkanDeferredSwap READ vulkanDeferredSwap WRITE setVulkanDeferredSwap NOTIFY vulkanDeferredSwapChanged)
@@ -290,6 +291,9 @@ public:
 
     QString audioOutDevice() const;
     void setAudioOutDevice(const QString &device);
+
+    QString language() const;
+    void setLanguage(const QString &language);
 
     QString decoder() const;
     void setDecoder(const QString &decoder);
@@ -660,6 +664,7 @@ signals:
     void audioBufferSizeChanged();
     void audioVolumeChanged();
     void audioOutDeviceChanged();
+    void languageChanged();
     void audioInDeviceChanged();
     void wifiDroppedNotifChanged();
     void portGuessingEnabledChanged();

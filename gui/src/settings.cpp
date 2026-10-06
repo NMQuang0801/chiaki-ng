@@ -859,6 +859,16 @@ void Settings::SetAudioOutDevice(QString device_name)
 	settings.setValue("settings/audio_out_device", device_name);
 }
 
+QString Settings::GetLanguage()
+{
+	return QSettings().value("settings/language", QStringLiteral("vi")).toString();
+}
+
+void Settings::SetLanguage(const QString &language)
+{
+	QSettings().setValue("settings/language", language);
+}
+
 void Settings::SetAudioInDevice(QString device_name)
 {
 	settings.setValue("settings/audio_in_device", device_name);

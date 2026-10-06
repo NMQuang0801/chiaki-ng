@@ -30,4 +30,7 @@
     <file alias="FSRCNNX_x2_8-0-4-1.glsl">shaders/FSRCNNX_x2_8-0-4-1.glsl</file>
     <file alias="FSRCNNX_x2_16-0-4-1.glsl">shaders/FSRCNNX_x2_16-0-4-1.glsl</file>
   </qresource>
+  <qresource prefix="/i18n">
+    <file alias="chiaki_vi.qm">i18n/chiaki_vi.qm</file>
+  </qresource>
 </RCC>
