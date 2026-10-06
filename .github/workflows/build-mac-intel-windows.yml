@@ -23,6 +23,11 @@ on:
         required: false
         default: false
         type: boolean
+      brew_snapshot:
+        description: 'macOS Intel: ngày chốt homebrew-core (YYYY-MM-DD, trước 2026-08-28 để còn gói dựng sẵn cho Intel)'
+        required: false
+        default: '2026-08-20'
+        type: string
 
 jobs:
   build-mac_x86_64:
@@ -64,9 +69,37 @@ jobs:
         run: |
           pip3 install --user 'protobuf>=5,<6' --break-system-packages
 
+      # Homebrew stopped building macOS Intel bottles on 2026-08-28; newer formulae
+      # would build from source (and fetch from the often unreachable ftp.gnu.org)
+      - name: Pin homebrew-core to a snapshot with Intel bottles
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SNAPSHOT: ${{ inputs.brew_snapshot || '2026-08-20' }}
+        run: |
+          sha=$(gh api "repos/Homebrew/homebrew-core/commits?until=${SNAPSHOT}T00:00:00Z&per_page=1" --jq '.[0].sha')
+          if [ -z "$sha" ]; then
+            echo "::error::Không tìm thấy commit homebrew-core trước ${SNAPSHOT}"
+            exit 1
+          fi
+          echo "homebrew-core snapshot ${SNAPSHOT}: ${sha}"
+
+          core="$(brew --repository)/Library/Taps/homebrew/homebrew-core"
+          rm -rf "$core"
+          mkdir -p "$core"
+          git -C "$core" init -q
+          git -C "$core" remote add origin https://github.com/Homebrew/homebrew-core
+          git -C "$core" fetch -q --depth=1 origin "$sha"
+          git -C "$core" checkout -q FETCH_HEAD
+
+          {
+            echo "HOMEBREW_NO_INSTALL_FROM_API=1"
+            echo "HOMEBREW_NO_AUTO_UPDATE=1"
+            echo "HOMEBREW_NO_INSTALL_UPGRADE=1"
+            echo "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1"
+          } >> "$GITHUB_ENV"
+
       - name: Install brew dependencies
         run: |
-          brew update
           brew uninstall pkgconfig || true
           brew install ffmpeg pkgconfig opus openssl@3 cmake ninja nasm protobuf@29 speexdsp libplacebo wget python-setuptools json-c miniupnpc libevent
 
@@ -316,9 +349,12 @@ jobs:
     needs: [ build-mac_x86_64, build-windows_x64-msys2, release ]
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
     steps:
       - name: Send Telegram message
         env:
+          GH_TOKEN: ${{ github.token }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           REF: ${{ inputs.ref }}
@@ -328,6 +364,7 @@ jobs:
           RELEASE_RESULT: ${{ needs.release.result }}
           RELEASE_URL: ${{ needs.release.outputs.url }}
           SHA: ${{ needs.build-mac_x86_64.outputs.sha || needs.build-windows_x64-msys2.outputs.sha || '-' }}
+          SHA_FULL: ${{ needs.build-mac_x86_64.outputs.sha_full || needs.build-windows_x64-msys2.outputs.sha_full || '-' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           ACTOR: ${{ github.actor }}
         run: |
@@ -370,7 +407,74 @@ jobs:
             "$release_line" \
             "$ACTOR" "$RUN_URL")
 
+          err_re='##\[error\]|[Ee]rror:|ERROR:|[Ff]atal:|FAILED|CMake Error|undefined reference|No such file or directory|command not found|Process completed with exit code'
+          mkdir -p logs
+          : > failed_jobs.tsv
+          if [ "$MAC_RESULT" = "failure" ] || [ "$WIN_RESULT" = "failure" ] || [ "$RELEASE_RESULT" = "failure" ]; then
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs" \
+              --jq '.jobs[] | select(.conclusion == "failure") | [.id, .name] | @tsv' \
+              < /dev/null > failed_jobs.tsv || echo "::warning::Không lấy được danh sách job lỗi"
+          fi
+
+          summary=""
+          while IFS=$'\t' read -r job_id job_name; do
+            [ -n "$job_id" ] || continue
+            safe=$(printf '%s' "$job_name" | tr -c 'A-Za-z0-9._-' '_')
+            steps=$(gh api "repos/${GITHUB_REPOSITORY}/actions/jobs/${job_id}" \
+              --jq '[.steps[] | select(.conclusion == "failure") | .name] | join(", ")' < /dev/null || true)
+
+            raw="logs/${safe}.raw"
+            for i in 1 2 3 4 5 6; do
+              gh api "repos/${GITHUB_REPOSITORY}/actions/jobs/${job_id}/logs" < /dev/null > "$raw" 2>/dev/null && [ -s "$raw" ] && break
+              sleep 10
+            done
+            sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g; s/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z ?//' "$raw" > "logs/${safe}.log" || true
+            errors=$(grep -E "$err_re" "logs/${safe}.log" | tail -n 40 || true)
+
+            report="logs/${safe}-error.txt"
+            {
+              echo "Run: ${RUN_URL}"
+              echo "Job: ${job_name}"
+              echo "Nhánh: ${REF}"
+              echo "Commit: ${SHA_FULL}"
+              echo "Step lỗi: ${steps:-không rõ}"
+              echo
+              echo "===== Các dòng lỗi ====="
+              echo "${errors:-(không tìm thấy dòng lỗi rõ ràng, xem 300 dòng cuối)}"
+              echo
+              echo "===== 300 dòng cuối ====="
+              tail -n 300 "logs/${safe}.log"
+              echo
+              echo "===== Log đầy đủ ====="
+              cat "logs/${safe}.log"
+            } > "$report"
+            if [ "$(stat -c %s "$report")" -gt 45000000 ]; then
+              gzip -9 "$report"
+            fi
+
+            summary+=$'\n\n'"--- ${job_name} ---"$'\n'"Step lỗi: ${steps:-không rõ}"
+            if [ -n "$errors" ]; then
+              summary+=$'\n'"$(printf '%s\n' "$errors" | tail -n 12 | cut -c1-300)"
+            fi
+          done < failed_jobs.tsv
+
+          if [ -n "$summary" ]; then
+            text+=$'\n\n'"===== CHI TIẾT LỖI =====${summary}"$'\n\n'"File log đầy đủ gửi kèm bên dưới."
+          fi
+          if [ "${#text}" -gt 3900 ]; then
+            text="${text:0:3900}"$'\n...(đã cắt bớt, xem file log)'
+          fi
+
           curl -sS --fail-with-body -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
             --data-urlencode "text=${text}" \
-            --data-urlencode "disable_web_page_preview=true"
+            --data-urlencode "disable_web_page_preview=true" > /dev/null
+
+          for f in logs/*-error.txt logs/*-error.txt.gz; do
+            [ -f "$f" ] || continue
+            curl -sS --fail-with-body -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+              --form-string "chat_id=${TELEGRAM_CHAT_ID}" \
+              -F "document=@${f}" \
+              --form-string "caption=Log lỗi ${REF} (${SHA}): $(basename "$f")" > /dev/null \
+              || echo "::warning::Gửi file $f lên Telegram thất bại"
+          done
