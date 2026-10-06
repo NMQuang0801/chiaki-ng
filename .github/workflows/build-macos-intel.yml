@@ -30,17 +30,6 @@ jobs:
           ref: ${{ inputs.ref }}
           submodules: recursive
 
-      # Qt from the official installer (universal binaries) instead of Homebrew,
-      # since Homebrew no longer guarantees Intel bottles for large formulae like qt@6
-      - name: Setup Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: "6.9.*"
-          host: mac
-          target: desktop
-          modules: 'qtwebengine qtpositioning qtwebchannel qtwebsockets'
-          cache: true
-
       - name: Install protobuf
         run: |
           pip3 install --user 'protobuf>=5,<6' --break-system-packages
@@ -74,10 +63,13 @@ jobs:
             echo "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1"
           } >> "$GITHUB_ENV"
 
+      # Qt comes from Homebrew because the official Qt installer builds for macOS
+      # are compiled without Vulkan (QVulkanInstance), which the renderer requires
       - name: Install brew dependencies
         run: |
           brew uninstall pkgconfig || true
-          brew install ffmpeg pkgconfig opus openssl@3 cmake ninja nasm protobuf@29 speexdsp libplacebo wget python-setuptools json-c miniupnpc libevent
+          brew install ffmpeg pkgconfig opus openssl@3 cmake ninja nasm protobuf@29 speexdsp libplacebo wget python-setuptools json-c miniupnpc libevent \
+            qtbase qtdeclarative qtsvg qtwebengine qtwebchannel qtpositioning qtwebsockets qttools qtimageformats
 
       - name: Install sdl2-compat
         run: |
@@ -89,7 +81,7 @@ jobs:
           cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release \
             -DCHIAKI_ENABLE_CLI=OFF -DCHIAKI_ENABLE_STEAMDECK_NATIVE=OFF \
             -DCMAKE_OSX_ARCHITECTURES=x86_64 \
-            -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR};$(brew --prefix)/opt/openssl@3;$(brew --prefix)/opt/protobuf@29"
+            -DCMAKE_PREFIX_PATH="$(brew --prefix);$(brew --prefix)/opt/openssl@3;$(brew --prefix)/opt/protobuf@29"
 
       - name: Build chiaki-ng
         run: |
@@ -101,7 +93,12 @@ jobs:
           rm -rf chiaki-ng.app chiaki-ng.dmg
           cp -a build/gui/chiaki.app chiaki-ng.app
           cp scripts/qtwebengine_import.qml gui/src/qml/
-          MACDEPLOYQT="${QT_ROOT_DIR}/bin/macdeployqt"
+          MACDEPLOYQT=$(command -v macdeployqt || find "$(brew --prefix qttools)" -name macdeployqt -type f -perm +111 | head -n 1)
+          if [ -z "$MACDEPLOYQT" ]; then
+            echo "::error::Không tìm thấy macdeployqt trong qttools"
+            exit 1
+          fi
+          echo "macdeployqt: $MACDEPLOYQT"
           "$MACDEPLOYQT" chiaki-ng.app -qmldir="$PWD/gui/src/qml" -libpath=$(brew --prefix)/lib
           mkdir -p chiaki-ng.app/Contents/Resources/vulkan/icd.d
           wget https://github.com/KhronosGroup/MoltenVK/releases/download/v1.2.9/MoltenVK-macos.tar && tar xf MoltenVK-macos.tar
