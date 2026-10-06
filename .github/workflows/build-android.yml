@@ -24,6 +24,7 @@ jobs:
       NDK_VERSION: '28.2.13676358'
       CMAKE_VERSION: '3.22.1'
       GRADLE_VERSION: '8.11.1'
+      PROTOC_VERSION: '29.3'
 
     steps:
       - uses: actions/checkout@v4
@@ -40,8 +41,14 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install python protobuf
-        run: pip install protobuf
+      - name: Install protoc and python protobuf
+        run: |
+          curl -sSfL -o "${RUNNER_TEMP}/protoc.zip" \
+            "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip"
+          unzip -q -o "${RUNNER_TEMP}/protoc.zip" -d "${RUNNER_TEMP}/protoc"
+          echo "${RUNNER_TEMP}/protoc/bin" >> "$GITHUB_PATH"
+          "${RUNNER_TEMP}/protoc/bin/protoc" --version
+          pip install 'protobuf>=5.29,<6'
 
       - name: Install Android SDK packages
         run: |
