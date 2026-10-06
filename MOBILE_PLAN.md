@@ -20,6 +20,18 @@ Mục tiêu: chơi PS4/PS5 từ xa trên điện thoại qua 4G/Wi-Fi ngoài, đ
 
 Nguyên tắc: không viết lại lõi C, không dùng Flutter/React Native/Qt cho mobile. Mọi thay đổi ở `lib/` phải giữ bản desktop build được.
 
+## Phiên bản tối thiểu
+
+| | Tối thiểu | Máy chạy được | Vì sao không thấp hơn |
+|---|---|---|---|
+| Android | **7.0 (API 24)** | Gần như mọi máy Android từ 2016 trở lại đây | Lõi C dùng `getifaddrs()` (Android chỉ có từ API 24) để dò máy và kết nối PSN; phần video dùng `AMediaCodec_setOutputSurface()` (từ API 23). Hạ xuống 5.0/6.0 phải viết lại hai chỗ này mà chỉ thêm được máy đời 2014–2015, phần lớn không giải mã H.265 bằng phần cứng |
+| iOS | **15.0** | iPhone 6s, 6s Plus, SE (đời 1), 7, 7 Plus và mọi iPhone mới hơn | Mọi máy chạy được iOS 13/14 đều lên được iOS 15, nên hạ xuống 13/14 không thêm máy nào. Hạ xuống iOS 12 chỉ thêm iPhone 5s/6/6 Plus: không có SwiftUI, không giải mã H.265 bằng phần cứng, RAM 1 GB, không hỗ trợ tay cầm DualSense/DualShock |
+
+Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năng đó):
+- iOS dưới 14.5: không dùng được tay cầm DualSense (vẫn dùng nút ảo, tay cầm MFi, DualShock 4)
+- Android dưới 8.0: rung dùng kiểu cũ, không chỉnh được độ mạnh
+- Máy không giải mã H.265 bằng phần cứng: chọn H.264 trong cài đặt
+
 ---
 
 
@@ -154,7 +166,7 @@ Nguyên tắc: không viết lại lõi C, không dùng Flutter/React Native/Qt 
 
 ### 2.1 Build lõi C cho iOS
 
-- [ ] Toolchain CMake cho iOS (`CMAKE_SYSTEM_NAME=iOS`, arm64, deployment target iOS 15+)
+- [ ] Toolchain CMake cho iOS (`CMAKE_SYSTEM_NAME=iOS`, arm64, deployment target iOS 15.0)
 - [ ] Dùng mbedtls (`CHIAKI_LIB_ENABLE_MBEDTLS=ON`, `CHIAKI_LIB_MBEDTLS_EXTERNAL_PROJECT=ON`)
 - [ ] Tắt phần không cần cho bản đầu: `CHIAKI_ENABLE_RUDP=OFF` (kết nối qua PSN), GUI, CLI, tests, Steam Deck, setsu, FFmpeg
 - [ ] Biên dịch libopus cho iOS
