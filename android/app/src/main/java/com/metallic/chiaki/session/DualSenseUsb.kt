@@ -12,6 +12,7 @@ import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.metallic.chiaki.lib.ControllerState
+import com.metallic.chiaki.lib.OrientationTracker
 import kotlin.concurrent.thread
 
 private const val TAG = "DualSenseUsb"
@@ -27,6 +28,11 @@ private const val TOUCHPAD_NATIVE_HEIGHT = 1080
 private const val TRIGGER_EFFECT_OFF = 0x05
 private const val TRANSFER_TIMEOUT_MS = 100
 private val PLAYER_LEDS = byteArrayOf(0x04, 0x0A, 0x15, 0x1B, 0x1F)
+// Nominal sensor resolution, close enough without reading the per-controller calibration
+private const val GYRO_RES_PER_DEG_S = 1024.0f
+private const val ACCEL_RES_PER_G = 8192.0f
+private const val DEG_TO_RAD = (Math.PI / 180.0).toFloat()
+private const val MOTION_INTERVAL_NS = 4_000_000L
 
 /**
  * A DualSense connected by cable, driven directly through the USB HID interface.
@@ -100,6 +106,20 @@ class DualSenseUsb private constructor(
 
 	@Volatile private var running = true
 	private var readThread: Thread? = null
+	private val orientationTracker = OrientationTracker()
+
+	/**
+	 * Haptics are played as audio on channels 3 and 4 of the controller's USB audio device.
+	 * The controller only plays them while rumble emulation is off.
+	 */
+	var audioHaptics = false
+		set(value)
+		{
+			synchronized(outputLock) {
+				field = value
+				sendOutput()
+			}
+		}
 
 	private val outputLock = Any()
 	private var rumbleLeft: Byte = 0
@@ -137,6 +157,8 @@ class DualSenseUsb private constructor(
 		readThread?.join(TRANSFER_TIMEOUT_MS * 3L)
 		connection.releaseInterface(usbInterface)
 		connection.close()
+		if(readThread?.isAlive != true)
+			orientationTracker.dispose()
 	}
 
 	fun setRumble(left: UByte, right: UByte) = synchronized(outputLock) {
@@ -175,8 +197,9 @@ class DualSenseUsb private constructor(
 	{
 		val report = ByteArray(OUTPUT_REPORT_SIZE)
 		report[0] = OUTPUT_REPORT_ID.toByte()
-		// rumble emulation, no audio haptics, and the trigger effects if they changed
-		report[1] = (0x01 or 0x02 or (if(triggers) 0x04 or 0x08 else 0)).toByte()
+		val rumbleEmulation = !audioHaptics || rumbleLeft.toInt() != 0 || rumbleRight.toInt() != 0
+		// rumble emulation replacing audio haptics, and the trigger effects if they changed
+		report[1] = ((if(rumbleEmulation) 0x01 or 0x02 else 0) or (if(triggers) 0x04 or 0x08 else 0)).toByte()
 		// light bar, player LEDs, motor power reduction
 		report[2] = (0x04 or 0x10 or 0x40).toByte()
 		report[3] = rumbleRight
@@ -185,7 +208,7 @@ class DualSenseUsb private constructor(
 		leftTrigger.copyInto(report, 22)
 		report[37] = intensity
 		// improved rumble emulation on firmware 2.24 and newer
-		report[39] = 0x04
+		report[39] = if(rumbleEmulation) 0x04 else 0x00
 		report[44] = playerLeds
 		ledColor.copyInto(report, 45)
 		write(report)
@@ -205,6 +228,7 @@ class DualSenseUsb private constructor(
 	{
 		val buf = ByteArray(maxOf(inEndpoint.maxPacketSize, 64))
 		var lastState: ControllerState? = null
+		var lastDeliveryNs = 0L
 		while(running)
 		{
 			val read = connection.bulkTransfer(inEndpoint, buf, buf.size, TRANSFER_TIMEOUT_MS * 2)
@@ -217,17 +241,27 @@ class DualSenseUsb private constructor(
 			if(read < INPUT_REPORT_MIN_SIZE || buf[0].toInt() != INPUT_REPORT_ID)
 				continue
 			val state = parseInputReport(buf)
-			if(state != lastState)
+			val now = System.nanoTime()
+			// Motion changes with every report, deliver it at most as often as the phone sensors
+			val inputChanged = lastState?.let { !sameButtonsAndAxes(it, state) } ?: true
+			if(inputChanged || now - lastDeliveryNs >= MOTION_INTERVAL_NS)
 			{
 				lastState = state
+				lastDeliveryNs = now
 				onState(state)
 			}
 		}
 	}
 
+	private fun sameButtonsAndAxes(a: ControllerState, b: ControllerState) =
+		a.buttons == b.buttons && a.l2State == b.l2State && a.r2State == b.r2State &&
+				a.leftX == b.leftX && a.leftY == b.leftY && a.rightX == b.rightX && a.rightY == b.rightY &&
+				a.touches.contentEquals(b.touches)
+
 	private fun parseInputReport(report: ByteArray): ControllerState
 	{
 		fun u(i: Int) = report[i].toInt() and 0xff
+		fun s16(i: Int) = ((u(i + 1) shl 8) or u(i)).toShort().toFloat()
 		fun axis(i: Int) = (((u(i) shl 8) or u(i)) - 0x8000).toShort()
 		fun bit(byte: Int, mask: Int, button: UInt) = if(byte and mask != 0) button else 0U
 
@@ -282,6 +316,19 @@ class DualSenseUsb private constructor(
 			state.touches[i].x = x.coerceIn(0, touchpadWidth - 1).toUShort()
 			state.touches[i].y = (y * touchpadHeight / TOUCHPAD_NATIVE_HEIGHT).coerceIn(0, touchpadHeight - 1).toUShort()
 		}
+
+		state.gyroX = s16(16) / GYRO_RES_PER_DEG_S * DEG_TO_RAD
+		state.gyroY = s16(18) / GYRO_RES_PER_DEG_S * DEG_TO_RAD
+		state.gyroZ = s16(20) / GYRO_RES_PER_DEG_S * DEG_TO_RAD
+		state.accelX = s16(22) / ACCEL_RES_PER_G
+		state.accelY = s16(24) / ACCEL_RES_PER_G
+		state.accelZ = s16(26) / ACCEL_RES_PER_G
+		val orient = orientationTracker.update(state.gyroX, state.gyroY, state.gyroZ,
+			state.accelX, state.accelY, state.accelZ, System.nanoTime() / 1000L)
+		state.orientX = orient[0]
+		state.orientY = orient[1]
+		state.orientZ = orient[2]
+		state.orientW = orient[3]
 		return state
 	}
 }

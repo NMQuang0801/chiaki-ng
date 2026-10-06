@@ -140,8 +140,10 @@ Android không có API cho Adaptive trigger. Qua Bluetooth chỉ làm được k
 - [x] Android 11 trở xuống: rung điện thoại như cũ
 - [x] DualSense qua cáp USB: xin quyền trước khi vào stream, tự đọc nút/cần/cò/touchpad, gửi Adaptive trigger, rung, đèn, đèn người chơi
 - [x] Phiên chơi không bị ngắt khi hộp thoại xin quyền USB hiện lên (chuyển sang `onStart`/`onStop`)
-- [ ] Con quay hồi chuyển (gyro) của DualSense qua USB (hiện vẫn dùng cảm biến điện thoại)
-- [ ] Rung haptic thật (âm thanh qua USB) thay cho rung giả lập
+- [x] Con quay hồi chuyển (gyro) của DualSense qua USB, tính hướng bằng `chiaki_orientation_tracker` như bản desktop
+- [x] Rung haptic thật: phát haptic ra kênh 3–4 của thiết bị âm thanh USB của DualSense (48 kHz, 4 kênh), có công tắc tắt
+- [ ] Kiểm tra trên máy thật: điện thoại có mở được luồng âm thanh 4 kênh tới DualSense không (tùy hãng)
+- [ ] Khi cắm USB, Android có thể chuyển tiếng game sang loa/jack tai nghe của DualSense: cân nhắc thêm tùy chọn giữ tiếng ở điện thoại
 - [ ] Xong khi: cắm DualSense vào điện thoại, chơi game có Adaptive trigger (Astro's Playroom, Returnal...) thấy cò cứng/rung
 
 ### 1.8 Lấy PSN Account ID ngay trong app (làm sau khi 1.7 chạy được)
@@ -260,5 +262,6 @@ Android không có API cho Adaptive trigger. Qua Bluetooth chỉ làm được k
 | 2026-10-07 | Sửa CI: bỏ kiểm tra wrapper jar của oboe, cài `protoc` 29.3 | Build APK thành công, đăng ký PS5 thành công trên điện thoại thật (Android 11), xem được hình |
 | 2026-10-07 | Sửa nút ảo không hoạt động; thêm "Kiểu tay cầm", tự nhận DualSense/DualShock bị Android ánh xạ thô (DualSense Bluetooth trên Android 11 bị lệch nút); sửa công tắc "Xin keyframe khi mất gói" không lưu | Đã test OK: nút ảo và DualSense Bluetooth bấm đúng |
 | 2026-10-07 | Chế độ DualSense, rung/đèn tay cầm cho Android 12+, DualSense qua USB có Adaptive trigger | Chờ build và test |
+| 2026-10-07 | DualSense qua USB: gyro của tay cầm, rung haptic thật qua kênh âm thanh | Chờ build và test |
 
 

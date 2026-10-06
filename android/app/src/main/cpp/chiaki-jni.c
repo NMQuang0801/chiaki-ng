@@ -9,6 +9,7 @@
 #include <chiaki/session.h>
 #include <chiaki/discoveryservice.h>
 #include <chiaki/regist.h>
+#include <chiaki/orientation.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -136,6 +137,7 @@ typedef struct android_chiaki_session_t
 	jmethodID java_session_event_quit_meth;
 	jmethodID java_session_event_rumble_meth;
 	jmethodID java_session_event_haptic_rumble_meth;
+	jmethodID java_session_event_haptics_frame_meth;
 	jmethodID java_session_event_trigger_effects_meth;
 	jmethodID java_session_event_led_color_meth;
 	jmethodID java_session_event_player_index_meth;
@@ -170,6 +172,7 @@ typedef struct android_chiaki_session_t
 	int rumble_intensity;
 	int trigger_intensity;
 	float haptics_multiplier;
+	bool haptics_raw; // forward the haptics audio as is instead of converting it to rumble
 	uint32_t haptics_strength_sum;
 	unsigned int haptics_frames;
 } AndroidChiakiSession;
@@ -193,6 +196,18 @@ static void android_chiaki_haptics_frame(uint8_t *buf, size_t buf_size, void *us
 	size_t sample_count = buf_size / (2 * sizeof(int16_t));
 	if(!sample_count || session->haptics_multiplier <= 0.0f)
 		return;
+
+	if(session->haptics_raw)
+	{
+		JNIEnv *env = attach_thread_jni();
+		if(!env)
+			return;
+		jbyteArray frame = jnibytearray_create(env, buf, sample_count * 2 * sizeof(int16_t));
+		E->CallVoidMethod(env, session->java_session, session->java_session_event_haptics_frame_meth, frame);
+		E->DeleteLocalRef(env, frame);
+		(*global_vm)->DetachCurrentThread(global_vm);
+		return;
+	}
 
 	uint32_t sum_left = 0, sum_right = 0;
 	for(size_t i = 0; i < sample_count; i++)
@@ -437,6 +452,7 @@ JNIEXPORT void JNICALL JNI_FCN(sessionCreate)(JNIEnv *env, jobject obj, jobject 
 	session->java_session_event_quit_meth = E->GetMethodID(env, session->java_session_class, "eventQuit", "(ILjava/lang/String;)V");
 	session->java_session_event_rumble_meth = E->GetMethodID(env, session->java_session_class, "eventRumble", "(II)V");
 	session->java_session_event_haptic_rumble_meth = E->GetMethodID(env, session->java_session_class, "eventHapticRumble", "(I)V");
+	session->java_session_event_haptics_frame_meth = E->GetMethodID(env, session->java_session_class, "eventHapticsFrame", "([B)V");
 	session->java_session_event_trigger_effects_meth = E->GetMethodID(env, session->java_session_class, "eventTriggerEffects", "(II[B[B)V");
 	session->java_session_event_led_color_meth = E->GetMethodID(env, session->java_session_class, "eventLedColor", "(III)V");
 	session->java_session_event_player_index_meth = E->GetMethodID(env, session->java_session_class, "eventPlayerIndex", "(I)V");
@@ -580,6 +596,44 @@ JNIEXPORT void JNICALL JNI_FCN(sessionSetControllerState)(JNIEnv *env, jobject o
 	controller_state.orient_z = E->GetFloatField(env, controller_state_java, session->java_controller_state_orient_z);
 	controller_state.orient_w = E->GetFloatField(env, controller_state_java, session->java_controller_state_orient_w);
 	chiaki_session_set_controller_state(&session->session, &controller_state);
+}
+
+JNIEXPORT void JNICALL JNI_FCN(sessionSetHapticsRaw)(JNIEnv *env, jobject obj, jlong ptr, jboolean enabled)
+{
+	AndroidChiakiSession *session = (AndroidChiakiSession *)ptr;
+	session->haptics_raw = enabled;
+}
+
+JNIEXPORT jlong JNICALL JNI_FCN(orientationTrackerCreate)(JNIEnv *env, jobject obj)
+{
+	ChiakiOrientationTracker *tracker = malloc(sizeof(ChiakiOrientationTracker));
+	if(tracker)
+		chiaki_orientation_tracker_init(tracker);
+	return (jlong)tracker;
+}
+
+JNIEXPORT void JNICALL JNI_FCN(orientationTrackerFree)(JNIEnv *env, jobject obj, jlong ptr)
+{
+	free((ChiakiOrientationTracker *)ptr);
+}
+
+/**
+ * Gyro in rad/s, accel in g. Writes the orientation quaternion as x, y, z, w to orient_out.
+ */
+JNIEXPORT void JNICALL JNI_FCN(orientationTrackerUpdate)(JNIEnv *env, jobject obj, jlong ptr,
+		jfloat gx, jfloat gy, jfloat gz, jfloat ax, jfloat ay, jfloat az, jlong timestamp_us, jfloatArray orient_out)
+{
+	ChiakiOrientationTracker *tracker = (ChiakiOrientationTracker *)ptr;
+	if(!tracker)
+		return;
+	ChiakiAccelNewZero accel_zero;
+	chiaki_accel_new_zero_set_inactive(&accel_zero, false);
+	chiaki_orientation_tracker_update(tracker, gx, gy, gz, ax, ay, az, &accel_zero, false, (uint32_t)timestamp_us);
+	ChiakiControllerState state;
+	chiaki_controller_state_set_idle(&state);
+	chiaki_orientation_tracker_apply_to_controller_state(tracker, &state);
+	jfloat orient[4] = { state.orient_x, state.orient_y, state.orient_z, state.orient_w };
+	E->SetFloatArrayRegion(env, orient_out, 0, 4, orient);
 }
 
 JNIEXPORT void JNICALL JNI_FCN(sessionSetLoginPin)(JNIEnv *env, jobject obj, jlong ptr, jstring pin_java)

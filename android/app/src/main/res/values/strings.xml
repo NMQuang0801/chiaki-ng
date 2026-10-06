@@ -94,6 +94,8 @@
     <string name="preferences_dualsense_enabled_summary">Present a DualSense to the PS5 so it sends adaptive trigger, haptic and light bar data. Turn off if a game misbehaves</string>
     <string name="preferences_usb_dualsense_enabled_title">DualSense over USB</string>
     <string name="preferences_usb_dualsense_enabled_summary">Take over a DualSense connected by cable for adaptive triggers, rumble, light bar and touchpad</string>
+    <string name="preferences_usb_haptics_enabled_title">Real Haptics over USB</string>
+    <string name="preferences_usb_haptics_enabled_summary">Play the PS5 haptics on the USB DualSense\'s actuators through its audio channels instead of emulated rumble. Turn off if it does not vibrate</string>
     <string name="toast_usb_dualsense_connected">DualSense connected over USB, adaptive triggers enabled</string>
     <string name="toast_usb_dualsense_failed">Could not take over the DualSense connected over USB</string>
     <string name="preferences_motion_enabled_title">Motion</string>
@@ -137,4 +139,5 @@
     <string name="preferences_controller_layout_key">controller_layout</string>
     <string name="preferences_dualsense_enabled_key">dualsense_enabled</string>
     <string name="preferences_usb_dualsense_enabled_key">usb_dualsense_enabled</string>
+    <string name="preferences_usb_haptics_enabled_key">usb_haptics_enabled</string>
 </resources>

@@ -28,6 +28,13 @@ class StreamSession(val connectInfo: ConnectInfo, val logManager: LogManager, va
 	/** Rumble, trigger and light events, called on a native thread */
 	var feedbackCallback: ((Event) -> Unit)? = null
 
+	var hapticsRaw = false
+		set(value)
+		{
+			field = value
+			session?.setHapticsRaw(value)
+		}
+
 	private var surfaceTexture: SurfaceTexture? = null
 	private var surface: Surface? = null
 
@@ -61,6 +68,7 @@ class StreamSession(val connectInfo: ConnectInfo, val logManager: LogManager, va
 			val session = Session(connectInfo, logManager.createNewFile().file.absolutePath, logVerbose)
 			_state.value = StreamStateConnecting
 			session.eventCallback = this::eventCallback
+			session.setHapticsRaw(hapticsRaw)
 			session.start()
 			val surface = surface
 			if(surface != null)

@@ -50,9 +50,17 @@ class ControllerFeedback(private val context: Context, private val preferences: 
 		updateRumble()
 	}
 
+	/** Written to directly from the native thread, set from the main thread */
+	@Volatile var hapticsAudio: DualSenseHapticsAudio? = null
+
 	/** May be called from any thread */
 	fun onEvent(event: Event)
 	{
+		if(event is HapticsFrameEvent)
+		{
+			hapticsAudio?.write(event.frame)
+			return
+		}
 		handler.post { handleEvent(event) }
 	}
 

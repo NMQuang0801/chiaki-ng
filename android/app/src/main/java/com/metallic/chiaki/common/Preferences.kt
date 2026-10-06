@@ -118,6 +118,11 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(usbDualSenseEnabledKey, true)
 		set(value) { sharedPreferences.edit().putBoolean(usbDualSenseEnabledKey, value).apply() }
 
+	val usbHapticsEnabledKey get() = resources.getString(R.string.preferences_usb_haptics_enabled_key)
+	var usbHapticsEnabled
+		get() = sharedPreferences.getBoolean(usbHapticsEnabledKey, true)
+		set(value) { sharedPreferences.edit().putBoolean(usbHapticsEnabledKey, value).apply() }
+
 	val controllerLayoutKey get() = resources.getString(R.string.preferences_controller_layout_key)
 	var controllerLayout
 		get() = sharedPreferences.getString(controllerLayoutKey, controllerLayoutDefault.value)?.let { value ->

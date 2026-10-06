@@ -10,6 +10,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Matrix
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.*
@@ -134,6 +137,8 @@ class StreamActivity : AppCompatActivity()
 		}
 
 		usbDualSenseEnabled = preferences.usbDualSenseEnabled
+		usbHapticsEnabled = preferences.usbHapticsEnabled
+		audioManager.registerAudioDeviceCallback(audioDeviceCallback, uiVisibilityHandler)
 		val usbFilter = IntentFilter().apply {
 			addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
 			addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
@@ -145,8 +150,46 @@ class StreamActivity : AppCompatActivity()
 
 	private var feedback: ControllerFeedback? = null
 	private var usbDualSenseEnabled = false
+	private var usbHapticsEnabled = false
 	private var dualSenseUsb: DualSenseUsb? = null
+	private var hapticsAudio: DualSenseHapticsAudio? = null
 	private val usbManager by lazy { getSystemService(USB_SERVICE) as UsbManager }
+	private val audioManager by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
+
+	// The controller's USB audio device shows up a moment after the USB device itself
+	private val audioDeviceCallback = object: AudioDeviceCallback()
+	{
+		override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = openHapticsAudio()
+
+		override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>)
+		{
+			val device = hapticsAudio?.device ?: return
+			if(removedDevices.any { it.id == device.id })
+				closeHapticsAudio()
+		}
+	}
+
+	private fun openHapticsAudio()
+	{
+		val controller = dualSenseUsb ?: return
+		if(!usbHapticsEnabled || hapticsAudio != null)
+			return
+		val audio = DualSenseHapticsAudio.open(this) ?: return
+		hapticsAudio = audio
+		feedback?.hapticsAudio = audio
+		controller.audioHaptics = true
+		viewModel.session.hapticsRaw = true
+	}
+
+	private fun closeHapticsAudio()
+	{
+		val audio = hapticsAudio ?: return
+		hapticsAudio = null
+		viewModel.session.hapticsRaw = false
+		dualSenseUsb?.audioHaptics = false
+		feedback?.hapticsAudio = null
+		audio.close()
+	}
 
 	private val usbReceiver = object: BroadcastReceiver()
 	{
@@ -191,15 +234,19 @@ class StreamActivity : AppCompatActivity()
 		}
 		dualSenseUsb = controller
 		feedback?.usbController = controller
+		viewModel.input.usbMotion = true
+		openHapticsAudio()
 		Toast.makeText(this, R.string.toast_usb_dualsense_connected, Toast.LENGTH_SHORT).show()
 	}
 
 	private fun closeUsbDualSense()
 	{
 		val controller = dualSenseUsb ?: return
+		closeHapticsAudio()
 		dualSenseUsb = null
 		feedback?.usbController = null
 		controller.close()
+		viewModel.input.usbMotion = false
 		viewModel.input.usbControllerState = ControllerState()
 	}
 
@@ -252,6 +299,7 @@ class StreamActivity : AppCompatActivity()
 		if(feedback != null)
 		{
 			unregisterReceiver(usbReceiver)
+			audioManager.unregisterAudioDeviceCallback(audioDeviceCallback)
 			viewModel.session.feedbackCallback = null
 			closeUsbDualSense()
 			feedback?.close()

@@ -18,21 +18,26 @@ class StreamInput(val context: Context, val preferences: Preferences)
 
 	val controllerState: ControllerState get()
 	{
-		val controllerState = sensorControllerState or keyControllerState or motionControllerState or usbControllerState
+		// motion is taken from the first state, prefer the controller's own sensors over the phone's
+		val motionSource = if(usbMotion) usbControllerState else sensorControllerState
+		val controllerState = motionSource or keyControllerState or motionControllerState or usbControllerState
 
-		val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-		@Suppress("DEPRECATION")
-		when(windowManager.defaultDisplay.rotation)
+		if(!usbMotion)
 		{
-			Surface.ROTATION_90 -> {
-				controllerState.accelX *= -1.0f
-				controllerState.accelZ *= -1.0f
-				controllerState.gyroX *= -1.0f
-				controllerState.gyroZ *= -1.0f
-				controllerState.orientX *= -1.0f
-				controllerState.orientZ *= -1.0f
+			val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+			@Suppress("DEPRECATION")
+			when(windowManager.defaultDisplay.rotation)
+			{
+				Surface.ROTATION_90 -> {
+					controllerState.accelX *= -1.0f
+					controllerState.accelZ *= -1.0f
+					controllerState.gyroX *= -1.0f
+					controllerState.gyroZ *= -1.0f
+					controllerState.orientX *= -1.0f
+					controllerState.orientZ *= -1.0f
+				}
+				else -> {}
 			}
-			else -> {}
 		}
 
 		// prioritize motion controller's l2 and r2 over key
@@ -55,6 +60,12 @@ class StreamInput(val context: Context, val preferences: Preferences)
 			controllerStateUpdated()
 		}
 	var usbControllerState = ControllerState() // from a DualSense driven over USB
+		set(value)
+		{
+			field = value
+			controllerStateUpdated()
+		}
+	var usbMotion = false // whether usbControllerState carries the controller's gyro and accelerometer
 		set(value)
 		{
 			field = value

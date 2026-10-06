@@ -80,6 +80,8 @@
     <string name="preferences_dualsense_enabled_summary">Báo với PS5 là đang dùng DualSense để PS5 gửi Adaptive trigger, rung haptic và màu đèn. Tắt nếu game bị lỗi</string>
     <string name="preferences_usb_dualsense_enabled_title">DualSense qua cáp USB</string>
     <string name="preferences_usb_dualsense_enabled_summary">Điều khiển trực tiếp DualSense cắm dây để có Adaptive trigger, rung, đèn và touchpad</string>
+    <string name="preferences_usb_haptics_enabled_title">Rung haptic thật qua USB</string>
+    <string name="preferences_usb_haptics_enabled_summary">Phát rung haptic của PS5 ra bộ rung của DualSense cắm USB qua kênh âm thanh, thay cho rung giả lập. Tắt nếu tay cầm không rung</string>
     <string name="toast_usb_dualsense_connected">Đã kết nối DualSense qua USB, Adaptive trigger đã bật</string>
     <string name="toast_usb_dualsense_failed">Không điều khiển được DualSense cắm qua USB</string>
     <string name="preferences_motion_enabled_title">Cảm biến chuyển động</string>

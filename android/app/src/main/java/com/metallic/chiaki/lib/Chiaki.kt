@@ -95,6 +95,10 @@ private class ChiakiNative
 		@JvmStatic external fun sessionSetSurface(ptr: Long, surface: Surface?)
 		@JvmStatic external fun sessionSetControllerState(ptr: Long, controllerState: ControllerState)
 		@JvmStatic external fun sessionSetLoginPin(ptr: Long, pin: String)
+		@JvmStatic external fun sessionSetHapticsRaw(ptr: Long, enabled: Boolean)
+		@JvmStatic external fun orientationTrackerCreate(): Long
+		@JvmStatic external fun orientationTrackerFree(ptr: Long)
+		@JvmStatic external fun orientationTrackerUpdate(ptr: Long, gx: Float, gy: Float, gz: Float, ax: Float, ay: Float, az: Float, timestampUs: Long, orientOut: FloatArray)
 		@JvmStatic external fun discoveryServiceCreate(result: CreateResult, options: DiscoveryServiceOptions, javaService: DiscoveryService)
 		@JvmStatic external fun discoveryServiceFree(ptr: Long)
 		@JvmStatic external fun discoveryServiceWakeup(ptr: Long, host: String, userCredential: Long, ps5: Boolean)
@@ -320,6 +324,8 @@ data class LoginPinRequestEvent(val pinIncorrect: Boolean): Event()
 data class QuitEvent(val reason: QuitReason, val reasonString: String?): Event()
 data class RumbleEvent(val left: UByte, val right: UByte): Event()
 data class HapticRumbleEvent(val strength: UByte): Event()
+/** 16-bit stereo PCM at 3 kHz, only sent while Session.setHapticsRaw(true) */
+class HapticsFrameEvent(val frame: ByteArray): Event()
 class TriggerEffectsEvent(val typeLeft: UByte, val typeRight: UByte, val left: ByteArray, val right: ByteArray): Event()
 data class LedColorEvent(val red: UByte, val green: UByte, val blue: UByte): Event()
 data class PlayerIndexEvent(val index: UByte): Event()
@@ -390,6 +396,11 @@ class Session(connectInfo: ConnectInfo, logFile: String?, logVerbose: Boolean)
 		event(HapticRumbleEvent(strength.toUByte()))
 	}
 
+	private fun eventHapticsFrame(frame: ByteArray)
+	{
+		event(HapticsFrameEvent(frame))
+	}
+
 	private fun eventTriggerEffects(typeLeft: Int, typeRight: Int, left: ByteArray, right: ByteArray)
 	{
 		event(TriggerEffectsEvent(typeLeft.toUByte(), typeRight.toUByte(), left, right))
@@ -423,6 +434,34 @@ class Session(connectInfo: ConnectInfo, logFile: String?, logVerbose: Boolean)
 	fun setLoginPin(pin: String)
 	{
 		ChiakiNative.sessionSetLoginPin(nativePtr, pin)
+	}
+
+	/** Deliver haptics as HapticsFrameEvent instead of HapticRumbleEvent */
+	fun setHapticsRaw(enabled: Boolean)
+	{
+		ChiakiNative.sessionSetHapticsRaw(nativePtr, enabled)
+	}
+}
+
+/** Madgwick orientation from gyro and accelerometer, as used for the controller state */
+class OrientationTracker
+{
+	private var nativePtr = ChiakiNative.orientationTrackerCreate()
+	private val orient = FloatArray(4)
+
+	/** @return the orientation quaternion as x, y, z, w, valid until the next call */
+	fun update(gyroX: Float, gyroY: Float, gyroZ: Float, accelX: Float, accelY: Float, accelZ: Float, timestampUs: Long): FloatArray
+	{
+		ChiakiNative.orientationTrackerUpdate(nativePtr, gyroX, gyroY, gyroZ, accelX, accelY, accelZ, timestampUs, orient)
+		return orient
+	}
+
+	fun dispose()
+	{
+		if(nativePtr == 0L)
+			return
+		ChiakiNative.orientationTrackerFree(nativePtr)
+		nativePtr = 0L
 	}
 }
 
