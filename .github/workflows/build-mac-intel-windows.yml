@@ -23,6 +23,11 @@ on:
         required: false
         default: false
         type: boolean
+      brew_snapshot:
+        description: 'macOS Intel: ngày chốt homebrew-core (YYYY-MM-DD, trước 2026-08-28 để còn gói dựng sẵn cho Intel)'
+        required: false
+        default: '2026-08-20'
+        type: string
 
 jobs:
   build-mac_x86_64:
@@ -64,9 +69,37 @@ jobs:
         run: |
           pip3 install --user 'protobuf>=5,<6' --break-system-packages
 
+      # Homebrew stopped building macOS Intel bottles on 2026-08-28; newer formulae
+      # would build from source (and fetch from the often unreachable ftp.gnu.org)
+      - name: Pin homebrew-core to a snapshot with Intel bottles
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SNAPSHOT: ${{ inputs.brew_snapshot || '2026-08-20' }}
+        run: |
+          sha=$(gh api "repos/Homebrew/homebrew-core/commits?until=${SNAPSHOT}T00:00:00Z&per_page=1" --jq '.[0].sha')
+          if [ -z "$sha" ]; then
+            echo "::error::Không tìm thấy commit homebrew-core trước ${SNAPSHOT}"
+            exit 1
+          fi
+          echo "homebrew-core snapshot ${SNAPSHOT}: ${sha}"
+
+          core="$(brew --repository)/Library/Taps/homebrew/homebrew-core"
+          rm -rf "$core"
+          mkdir -p "$core"
+          git -C "$core" init -q
+          git -C "$core" remote add origin https://github.com/Homebrew/homebrew-core
+          git -C "$core" fetch -q --depth=1 origin "$sha"
+          git -C "$core" checkout -q FETCH_HEAD
+
+          {
+            echo "HOMEBREW_NO_INSTALL_FROM_API=1"
+            echo "HOMEBREW_NO_AUTO_UPDATE=1"
+            echo "HOMEBREW_NO_INSTALL_UPGRADE=1"
+            echo "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1"
+          } >> "$GITHUB_ENV"
+
       - name: Install brew dependencies
         run: |
-          brew update
           brew uninstall pkgconfig || true
           brew install ffmpeg pkgconfig opus openssl@3 cmake ninja nasm protobuf@29 speexdsp libplacebo wget python-setuptools json-c miniupnpc libevent
 
