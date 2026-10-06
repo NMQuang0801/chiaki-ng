@@ -70,7 +70,8 @@ data class ConnectInfo(
 	val registKey: ByteArray,
 	val morning: ByteArray,
 	val videoProfile: ConnectVideoProfile,
-	val enableIdrOnFecFailure: Boolean = true
+	val enableIdrOnFecFailure: Boolean = true,
+	val enableDualSense: Boolean = true
 ): Parcelable
 
 private class ChiakiNative
@@ -318,6 +319,12 @@ object ConnectedEvent: Event()
 data class LoginPinRequestEvent(val pinIncorrect: Boolean): Event()
 data class QuitEvent(val reason: QuitReason, val reasonString: String?): Event()
 data class RumbleEvent(val left: UByte, val right: UByte): Event()
+data class HapticRumbleEvent(val strength: UByte): Event()
+class TriggerEffectsEvent(val typeLeft: UByte, val typeRight: UByte, val left: ByteArray, val right: ByteArray): Event()
+data class LedColorEvent(val red: UByte, val green: UByte, val blue: UByte): Event()
+data class PlayerIndexEvent(val index: UByte): Event()
+/** Raw "motor power reduction" byte: high nibble for the triggers, low nibble for rumble */
+data class DualSenseIntensityEvent(val value: UByte): Event()
 
 class CreateError(val errorCode: ErrorCode): Exception("Failed to create a native object: $errorCode")
 
@@ -376,6 +383,31 @@ class Session(connectInfo: ConnectInfo, logFile: String?, logVerbose: Boolean)
 	private fun eventRumble(left: Int, right: Int)
 	{
 		event(RumbleEvent(left.toUByte(), right.toUByte()))
+	}
+
+	private fun eventHapticRumble(strength: Int)
+	{
+		event(HapticRumbleEvent(strength.toUByte()))
+	}
+
+	private fun eventTriggerEffects(typeLeft: Int, typeRight: Int, left: ByteArray, right: ByteArray)
+	{
+		event(TriggerEffectsEvent(typeLeft.toUByte(), typeRight.toUByte(), left, right))
+	}
+
+	private fun eventLedColor(red: Int, green: Int, blue: Int)
+	{
+		event(LedColorEvent(red.toUByte(), green.toUByte(), blue.toUByte()))
+	}
+
+	private fun eventPlayerIndex(index: Int)
+	{
+		event(PlayerIndexEvent(index.toUByte()))
+	}
+
+	private fun eventDualSenseIntensity(value: Int)
+	{
+		event(DualSenseIntensityEvent(value.toUByte()))
 	}
 
 	fun setSurface(surface: Surface?)

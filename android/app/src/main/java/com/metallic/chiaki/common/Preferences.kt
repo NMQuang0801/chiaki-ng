@@ -108,6 +108,16 @@ class Preferences(context: Context)
 		get() = sharedPreferences.getBoolean(swapCrossMoonKey, false)
 		set(value) { sharedPreferences.edit().putBoolean(swapCrossMoonKey, value).apply() }
 
+	val dualSenseEnabledKey get() = resources.getString(R.string.preferences_dualsense_enabled_key)
+	var dualSenseEnabled
+		get() = sharedPreferences.getBoolean(dualSenseEnabledKey, true)
+		set(value) { sharedPreferences.edit().putBoolean(dualSenseEnabledKey, value).apply() }
+
+	val usbDualSenseEnabledKey get() = resources.getString(R.string.preferences_usb_dualsense_enabled_key)
+	var usbDualSenseEnabled
+		get() = sharedPreferences.getBoolean(usbDualSenseEnabledKey, true)
+		set(value) { sharedPreferences.edit().putBoolean(usbDualSenseEnabledKey, value).apply() }
+
 	val controllerLayoutKey get() = resources.getString(R.string.preferences_controller_layout_key)
 	var controllerLayout
 		get() = sharedPreferences.getString(controllerLayoutKey, controllerLayoutDefault.value)?.let { value ->

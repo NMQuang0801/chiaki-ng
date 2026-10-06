@@ -10,6 +10,7 @@
 #include <chiaki/discoveryservice.h>
 #include <chiaki/regist.h>
 
+#include <stdlib.h>
 #include <string.h>
 #include <linux/in.h>
 #include <linux/in6.h>
@@ -134,6 +135,11 @@ typedef struct android_chiaki_session_t
 	jmethodID java_session_event_login_pin_request_meth;
 	jmethodID java_session_event_quit_meth;
 	jmethodID java_session_event_rumble_meth;
+	jmethodID java_session_event_haptic_rumble_meth;
+	jmethodID java_session_event_trigger_effects_meth;
+	jmethodID java_session_event_led_color_meth;
+	jmethodID java_session_event_player_index_meth;
+	jmethodID java_session_event_dualsense_intensity_meth;
 	jfieldID java_controller_state_buttons;
 	jfieldID java_controller_state_l2_state;
 	jfieldID java_controller_state_r2_state;
@@ -159,7 +165,65 @@ typedef struct android_chiaki_session_t
 	AndroidChiakiVideoDecoder video_decoder;
 	AndroidChiakiAudioDecoder audio_decoder;
 	void *audio_output;
+
+	// DualSense feedback settings requested by the console, -1 = off
+	int rumble_intensity;
+	int trigger_intensity;
+	float haptics_multiplier;
+	uint32_t haptics_strength_sum;
+	unsigned int haptics_frames;
 } AndroidChiakiSession;
+
+#define HAPTICS_FRAMES_PER_RUMBLE 3
+#define HAPTICS_RUMBLE_MIN_STRENGTH 100
+
+static void android_chiaki_send_dualsense_intensity(JNIEnv *env, AndroidChiakiSession *session)
+{
+	// Same encoding as the "motor power reduction" byte of the DualSense output report
+	uint8_t trigger = session->trigger_intensity < 0 ? 0xf0 : (uint8_t)session->trigger_intensity;
+	uint8_t rumble = session->rumble_intensity < 0 ? 0x0f : (uint8_t)session->rumble_intensity;
+	E->CallVoidMethod(env, session->java_session,
+					  session->java_session_event_dualsense_intensity_meth,
+					  (jint)(trigger | rumble));
+}
+
+static void android_chiaki_haptics_frame(uint8_t *buf, size_t buf_size, void *user)
+{
+	AndroidChiakiSession *session = user;
+	size_t sample_count = buf_size / (2 * sizeof(int16_t));
+	if(!sample_count || session->haptics_multiplier <= 0.0f)
+		return;
+
+	uint32_t sum_left = 0, sum_right = 0;
+	for(size_t i = 0; i < sample_count; i++)
+	{
+		int16_t left, right;
+		memcpy(&left, buf + i * 4, sizeof(int16_t));
+		memcpy(&right, buf + i * 4 + 2, sizeof(int16_t));
+		sum_left += (uint32_t)abs(left) * 2;
+		sum_right += (uint32_t)abs(right) * 2;
+	}
+	uint32_t strength = (sum_left > sum_right ? sum_left : sum_right) / sample_count;
+	if(strength <= HAPTICS_RUMBLE_MIN_STRENGTH)
+		strength = 0;
+
+	session->haptics_strength_sum += strength;
+	if(++session->haptics_frames < HAPTICS_FRAMES_PER_RUMBLE)
+		return;
+	uint32_t value = (uint32_t)((float)(session->haptics_strength_sum / session->haptics_frames) * session->haptics_multiplier) >> 8;
+	session->haptics_strength_sum = 0;
+	session->haptics_frames = 0;
+	if(value > 0xff)
+		value = 0xff;
+	if(!value)
+		return;
+
+	JNIEnv *env = attach_thread_jni();
+	if(!env)
+		return;
+	E->CallVoidMethod(env, session->java_session, session->java_session_event_haptic_rumble_meth, (jint)value);
+	(*global_vm)->DetachCurrentThread(global_vm);
+}
 
 static void android_chiaki_event_cb(ChiakiEvent *event, void *user)
 {
@@ -198,6 +262,53 @@ static void android_chiaki_event_cb(ChiakiEvent *event, void *user)
 							  session->java_session_event_rumble_meth,
 							  (jint)event->rumble.left,
 							  (jint)event->rumble.right);
+			break;
+		case CHIAKI_EVENT_TRIGGER_EFFECTS:
+		{
+			if(session->trigger_intensity < 0)
+				break;
+			jbyteArray left = jnibytearray_create(env, event->trigger_effects.left, sizeof(event->trigger_effects.left));
+			jbyteArray right = jnibytearray_create(env, event->trigger_effects.right, sizeof(event->trigger_effects.right));
+			E->CallVoidMethod(env, session->java_session,
+							  session->java_session_event_trigger_effects_meth,
+							  (jint)event->trigger_effects.type_left,
+							  (jint)event->trigger_effects.type_right,
+							  left, right);
+			E->DeleteLocalRef(env, left);
+			E->DeleteLocalRef(env, right);
+			break;
+		}
+		case CHIAKI_EVENT_LED_COLOR:
+			E->CallVoidMethod(env, session->java_session,
+							  session->java_session_event_led_color_meth,
+							  (jint)event->led_state[0],
+							  (jint)event->led_state[1],
+							  (jint)event->led_state[2]);
+			break;
+		case CHIAKI_EVENT_PLAYER_INDEX:
+			E->CallVoidMethod(env, session->java_session,
+							  session->java_session_event_player_index_meth,
+							  (jint)event->player_index);
+			break;
+		case CHIAKI_EVENT_HAPTIC_INTENSITY:
+			switch(event->intensity)
+			{
+				case Off: session->rumble_intensity = -1; session->haptics_multiplier = 0.0f; break;
+				case Strong: session->rumble_intensity = 0x00; session->haptics_multiplier = 1.0f; break;
+				case Medium: session->rumble_intensity = 0x02; session->haptics_multiplier = 0.5f; break;
+				case Weak: session->rumble_intensity = 0x03; session->haptics_multiplier = 0.33f; break;
+			}
+			android_chiaki_send_dualsense_intensity(env, session);
+			break;
+		case CHIAKI_EVENT_TRIGGER_INTENSITY:
+			switch(event->intensity)
+			{
+				case Off: session->trigger_intensity = -1; break;
+				case Strong: session->trigger_intensity = 0x00; break;
+				case Medium: session->trigger_intensity = 0x60; break;
+				case Weak: session->trigger_intensity = 0x90; break;
+			}
+			android_chiaki_send_dualsense_intensity(env, session);
 			break;
 		default:
 			break;
@@ -274,6 +385,7 @@ JNIEXPORT void JNICALL JNI_FCN(sessionCreate)(JNIEnv *env, jobject obj, jobject 
 	connect_info.enable_idr_on_fec_failure = E->GetBooleanField(env, connect_info_obj, E->GetFieldID(env, connect_info_class, "enableIdrOnFecFailure", "Z"));
 	// Without this the congestion report is clamped to 0% loss and the console never lowers the bitrate.
 	connect_info.packet_loss_max = 0.05;
+	connect_info.enable_dualsense = E->GetBooleanField(env, connect_info_obj, E->GetFieldID(env, connect_info_class, "enableDualSense", "Z"));
 
 	session = CHIAKI_NEW(AndroidChiakiSession);
 	if(!session)
@@ -283,6 +395,7 @@ JNIEXPORT void JNICALL JNI_FCN(sessionCreate)(JNIEnv *env, jobject obj, jobject 
 	}
 	memset(session, 0, sizeof(AndroidChiakiSession));
 	session->log = log;
+	session->haptics_multiplier = 1.0f;
 	err = android_chiaki_video_decoder_init(&session->video_decoder, log, connect_info.video_profile.width, connect_info.video_profile.height,
 			connect_info.ps5 ? connect_info.video_profile.codec : CHIAKI_CODEC_H264);
 	if(err != CHIAKI_ERR_SUCCESS)
@@ -323,6 +436,11 @@ JNIEXPORT void JNICALL JNI_FCN(sessionCreate)(JNIEnv *env, jobject obj, jobject 
 	session->java_session_event_login_pin_request_meth = E->GetMethodID(env, session->java_session_class, "eventLoginPinRequest", "(Z)V");
 	session->java_session_event_quit_meth = E->GetMethodID(env, session->java_session_class, "eventQuit", "(ILjava/lang/String;)V");
 	session->java_session_event_rumble_meth = E->GetMethodID(env, session->java_session_class, "eventRumble", "(II)V");
+	session->java_session_event_haptic_rumble_meth = E->GetMethodID(env, session->java_session_class, "eventHapticRumble", "(I)V");
+	session->java_session_event_trigger_effects_meth = E->GetMethodID(env, session->java_session_class, "eventTriggerEffects", "(II[B[B)V");
+	session->java_session_event_led_color_meth = E->GetMethodID(env, session->java_session_class, "eventLedColor", "(III)V");
+	session->java_session_event_player_index_meth = E->GetMethodID(env, session->java_session_class, "eventPlayerIndex", "(I)V");
+	session->java_session_event_dualsense_intensity_meth = E->GetMethodID(env, session->java_session_class, "eventDualSenseIntensity", "(I)V");
 
 	jclass controller_state_class = E->FindClass(env, BASE_PACKAGE"/ControllerState");
 	session->java_controller_state_buttons = E->GetFieldID(env, controller_state_class, "buttons", "I");
@@ -355,6 +473,14 @@ JNIEXPORT void JNICALL JNI_FCN(sessionCreate)(JNIEnv *env, jobject obj, jobject 
 	ChiakiAudioSink audio_sink;
 	android_chiaki_audio_decoder_get_sink(&session->audio_decoder, &audio_sink);
 	chiaki_session_set_audio_sink(&session->session, &audio_sink);
+
+	if(connect_info.enable_dualsense)
+	{
+		ChiakiAudioSink haptics_sink = { 0 };
+		haptics_sink.user = session;
+		haptics_sink.frame_cb = android_chiaki_haptics_frame;
+		chiaki_session_set_haptics_sink(&session->session, &haptics_sink);
+	}
 
 beach:
 	if(!session && log)

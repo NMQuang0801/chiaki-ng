@@ -25,8 +25,8 @@ class StreamSession(val connectInfo: ConnectInfo, val logManager: LogManager, va
 
 	private val _state = MutableLiveData<StreamState>(StreamStateIdle)
 	val state: LiveData<StreamState> get() = _state
-	private val _rumbleState = MutableLiveData<RumbleEvent>(RumbleEvent(0U, 0U))
-	val rumbleState: LiveData<RumbleEvent> get() = _rumbleState
+	/** Rumble, trigger and light events, called on a native thread */
+	var feedbackCallback: ((Event) -> Unit)? = null
 
 	private var surfaceTexture: SurfaceTexture? = null
 	private var surface: Surface? = null
@@ -89,7 +89,7 @@ class StreamSession(val connectInfo: ConnectInfo, val logManager: LogManager, va
 					event.pinIncorrect
 				)
 			)
-			is RumbleEvent -> _rumbleState.postValue(event)
+			else -> feedbackCallback?.invoke(event)
 		}
 	}
 

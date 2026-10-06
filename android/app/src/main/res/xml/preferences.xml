@@ -32,6 +32,20 @@
             app:icon="@drawable/ic_rumble" />
 
         <SwitchPreference
+            app:key="@string/preferences_dualsense_enabled_key"
+            app:title="@string/preferences_dualsense_enabled_title"
+            app:summary="@string/preferences_dualsense_enabled_summary"
+            app:defaultValue="true"
+            app:icon="@drawable/ic_gamepad" />
+
+        <SwitchPreference
+            app:key="@string/preferences_usb_dualsense_enabled_key"
+            app:title="@string/preferences_usb_dualsense_enabled_title"
+            app:summary="@string/preferences_usb_dualsense_enabled_summary"
+            app:defaultValue="true"
+            app:icon="@drawable/ic_gamepad" />
+
+        <SwitchPreference
             app:key="@string/preferences_motion_enabled_key"
             app:title="@string/preferences_motion_enabled_title"
             app:summary="@string/preferences_motion_enabled_summary"

@@ -18,7 +18,7 @@ class StreamInput(val context: Context, val preferences: Preferences)
 
 	val controllerState: ControllerState get()
 	{
-		val controllerState = sensorControllerState or keyControllerState or motionControllerState
+		val controllerState = sensorControllerState or keyControllerState or motionControllerState or usbControllerState
 
 		val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 		@Suppress("DEPRECATION")
@@ -49,6 +49,12 @@ class StreamInput(val context: Context, val preferences: Preferences)
 	private val keyControllerState = ControllerState() // from KeyEvents
 	private val motionControllerState = ControllerState() // from MotionEvents
 	var touchControllerState = ControllerState()
+		set(value)
+		{
+			field = value
+			controllerStateUpdated()
+		}
+	var usbControllerState = ControllerState() // from a DualSense driven over USB
 		set(value)
 		{
 			field = value

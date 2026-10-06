@@ -123,12 +123,26 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 - [ ] Ở nhà: chơi 10 phút, không vỡ hình
 - [ ] Ra ngoài: 4G + OpenVPN Connect, thêm máy bằng `192.168.1.73`, kết nối được
 - [ ] Chơi 15 phút qua 4G: ghi lại mất gói, độ trễ, có giật không
-- [ ] Tay cầm Bluetooth (DualSense/DualShock) bấm đúng nút, có rung
-- [ ] Nút ảo trên màn hình và touchpad dùng được
+- [x] Tay cầm Bluetooth (DualSense/DualShock) bấm đúng nút (DualSense Bluetooth trên Android 11 đã test)
+- [x] Nút ảo trên màn hình và touchpad dùng được
 - [ ] Xoay màn hình, chuyển app ra nền rồi quay lại không crash
 - [ ] Ngắt 4G giữa chừng: app báo lỗi rõ ràng, không treo
 - [ ] Cài bản build mới đè lên: máy đã đăng ký vẫn còn
 - [ ] Xong khi: tất cả mục trên đạt, log lỗi (nếu có) đã gửi và sửa
+
+### 1.7b Rung, đèn, Adaptive trigger của DualSense
+
+Android không có API cho Adaptive trigger. Qua Bluetooth chỉ làm được khi root, nên Adaptive trigger chỉ có khi cắm dây USB.
+
+- [x] Bật chế độ DualSense khi kết nối PS5 (`enable_dualsense`), có công tắc tắt trong cài đặt
+- [x] Chuyển sự kiện cò, đèn, số người chơi, cường độ, rung haptic từ lõi C sang app; đổi rung haptic thành mức rung
+- [x] Android 12+: rung và đèn trên tay cầm Bluetooth (`VibratorManager`, `LightsManager`)
+- [x] Android 11 trở xuống: rung điện thoại như cũ
+- [x] DualSense qua cáp USB: xin quyền trước khi vào stream, tự đọc nút/cần/cò/touchpad, gửi Adaptive trigger, rung, đèn, đèn người chơi
+- [x] Phiên chơi không bị ngắt khi hộp thoại xin quyền USB hiện lên (chuyển sang `onStart`/`onStop`)
+- [ ] Con quay hồi chuyển (gyro) của DualSense qua USB (hiện vẫn dùng cảm biến điện thoại)
+- [ ] Rung haptic thật (âm thanh qua USB) thay cho rung giả lập
+- [ ] Xong khi: cắm DualSense vào điện thoại, chơi game có Adaptive trigger (Astro's Playroom, Returnal...) thấy cò cứng/rung
 
 ### 1.8 Lấy PSN Account ID ngay trong app (làm sau khi 1.7 chạy được)
 
@@ -245,5 +259,6 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 | 2026-10-07 | Tiếng Việt cho app Android, tùy chọn xin keyframe khi mất gói, sửa `packet_loss_max = 0`     | Chờ build kiểm tra                                |
 | 2026-10-07 | Sửa CI: bỏ kiểm tra wrapper jar của oboe, cài `protoc` 29.3 | Build APK thành công, đăng ký PS5 thành công trên điện thoại thật (Android 11), xem được hình |
 | 2026-10-07 | Sửa nút ảo không hoạt động; thêm "Kiểu tay cầm", tự nhận DualSense/DualShock bị Android ánh xạ thô (DualSense Bluetooth trên Android 11 bị lệch nút); sửa công tắc "Xin keyframe khi mất gói" không lưu | Đã test OK: nút ảo và DualSense Bluetooth bấm đúng |
+| 2026-10-07 | Chế độ DualSense, rung/đèn tay cầm cho Android 12+, DualSense qua USB có Adaptive trigger | Chờ build và test |
 
 

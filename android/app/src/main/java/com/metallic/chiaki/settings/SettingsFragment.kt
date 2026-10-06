@@ -28,6 +28,8 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		preferences.motionEnabledKey -> preferences.motionEnabled
 		preferences.buttonHapticEnabledKey -> preferences.buttonHapticEnabled
 		preferences.idrOnFecFailureKey -> preferences.idrOnFecFailure
+		preferences.dualSenseEnabledKey -> preferences.dualSenseEnabled
+		preferences.usbDualSenseEnabledKey -> preferences.usbDualSenseEnabled
 		else -> defValue
 	}
 
@@ -41,6 +43,8 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 			preferences.motionEnabledKey -> preferences.motionEnabled = value
 			preferences.buttonHapticEnabledKey -> preferences.buttonHapticEnabled = value
 			preferences.idrOnFecFailureKey -> preferences.idrOnFecFailure = value
+			preferences.dualSenseEnabledKey -> preferences.dualSenseEnabled = value
+			preferences.usbDualSenseEnabledKey -> preferences.usbDualSenseEnabled = value
 		}
 	}
 

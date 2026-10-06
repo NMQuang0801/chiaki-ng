@@ -5,11 +5,19 @@ package com.metallic.chiaki.stream
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.app.AlertDialog
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Matrix
+import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbManager
 import android.os.*
 import android.view.*
 import android.widget.EditText
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.core.view.ViewCompat
@@ -35,7 +43,6 @@ import com.metallic.chiaki.touchcontrols.TouchpadOnlyFragment
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import kotlin.math.min
 
 private sealed class DialogContents
 private object StreamQuitDialog: DialogContents()
@@ -121,20 +128,79 @@ class StreamActivity : AppCompatActivity()
 		viewModel.session.state.observe(this, Observer { this.stateChanged(it) })
 		adjustStreamViewAspect()
 
-		if(Preferences(this).rumbleEnabled)
-		{
-			val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
-			viewModel.session.rumbleState.observe(this, Observer {
-				val amplitude = min(255, (it.left.toInt() + it.right.toInt()) / 2)
-				vibrator.cancel()
-				if(amplitude == 0)
-					return@Observer
-				if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-					vibrator.vibrate(VibrationEffect.createOneShot(1000, amplitude))
-				else
-					vibrator.vibrate(1000)
-			})
+		val preferences = Preferences(this)
+		feedback = ControllerFeedback(this, preferences).also {
+			viewModel.session.feedbackCallback = it::onEvent
 		}
+
+		usbDualSenseEnabled = preferences.usbDualSenseEnabled
+		val usbFilter = IntentFilter().apply {
+			addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+			addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+		}
+		ContextCompat.registerReceiver(this, usbReceiver, usbFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
+		// Permission was already asked for before starting the stream, don't ask again if it was denied.
+		DualSenseUsb.find(usbManager)?.let { connectUsbDualSense(it, requestPermission = false) }
+	}
+
+	private var feedback: ControllerFeedback? = null
+	private var usbDualSenseEnabled = false
+	private var dualSenseUsb: DualSenseUsb? = null
+	private val usbManager by lazy { getSystemService(USB_SERVICE) as UsbManager }
+
+	private val usbReceiver = object: BroadcastReceiver()
+	{
+		override fun onReceive(context: Context, intent: Intent)
+		{
+			val device = IntentCompat.getParcelableExtra(intent, UsbManager.EXTRA_DEVICE, UsbDevice::class.java) ?: return
+			if(!DualSenseUsb.isDualSense(device))
+				return
+			when(intent.action)
+			{
+				UsbManager.ACTION_USB_DEVICE_ATTACHED -> connectUsbDualSense(device, requestPermission = true)
+				UsbManager.ACTION_USB_DEVICE_DETACHED ->
+					if(dualSenseUsb?.device?.deviceName == device.deviceName)
+						closeUsbDualSense()
+			}
+		}
+	}
+
+	private fun connectUsbDualSense(device: UsbDevice, requestPermission: Boolean)
+	{
+		if(!usbDualSenseEnabled || dualSenseUsb != null || isDestroyed)
+			return
+		if(!usbManager.hasPermission(device))
+		{
+			if(requestPermission)
+				DualSenseUsb.requestPermission(this, device) { granted ->
+					if(granted)
+						connectUsbDualSense(device, requestPermission = false)
+				}
+			return
+		}
+		val controller = DualSenseUsb.open(usbManager, device) { state ->
+			uiVisibilityHandler.post {
+				if(dualSenseUsb != null)
+					viewModel.input.usbControllerState = state
+			}
+		}
+		if(controller == null)
+		{
+			Toast.makeText(this, R.string.toast_usb_dualsense_failed, Toast.LENGTH_LONG).show()
+			return
+		}
+		dualSenseUsb = controller
+		feedback?.usbController = controller
+		Toast.makeText(this, R.string.toast_usb_dualsense_connected, Toast.LENGTH_SHORT).show()
+	}
+
+	private fun closeUsbDualSense()
+	{
+		val controller = dualSenseUsb ?: return
+		dualSenseUsb = null
+		feedback?.usbController = null
+		controller.close()
+		viewModel.input.usbControllerState = ControllerState()
 	}
 
 	private val controlsJobs = mutableListOf<Job>()
@@ -163,12 +229,18 @@ class StreamActivity : AppCompatActivity()
 	{
 		super.onResume()
 		hideSystemUI()
+	}
+
+	// Keep streaming while only partially covered, e.g. by the USB permission dialog
+	override fun onStart()
+	{
+		super.onStart()
 		viewModel.session.resume()
 	}
 
-	override fun onPause()
+	override fun onStop()
 	{
-		super.onPause()
+		super.onStop()
 		viewModel.session.pause()
 	}
 
@@ -177,6 +249,14 @@ class StreamActivity : AppCompatActivity()
 		super.onDestroy()
 		controlsJobs.forEach { it.cancel() }
 		controlsJobs.clear()
+		if(feedback != null)
+		{
+			unregisterReceiver(usbReceiver)
+			viewModel.session.feedbackCallback = null
+			closeUsbDualSense()
+			feedback?.close()
+			feedback = null
+		}
 	}
 
 	private fun reconnect()

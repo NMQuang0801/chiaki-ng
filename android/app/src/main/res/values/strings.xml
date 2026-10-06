@@ -89,7 +89,13 @@
     <string name="preferences_swap_cross_moon_title">Swap Cross/Moon and Box/Pyramid Buttons</string>
     <string name="preferences_swap_cross_moon_summary">Swap face buttons if default mapping is incorrect (e.g. for 8BitDo controllers)</string>
     <string name="preferences_rumble_enabled_title">Rumble</string>
-    <string name="preferences_rumble_enabled_summary">Use phone vibration motor for rumble</string>
+    <string name="preferences_rumble_enabled_summary">Rumble the controller if supported (USB DualSense, Android 12+), otherwise the phone</string>
+    <string name="preferences_dualsense_enabled_title">DualSense Mode</string>
+    <string name="preferences_dualsense_enabled_summary">Present a DualSense to the PS5 so it sends adaptive trigger, haptic and light bar data. Turn off if a game misbehaves</string>
+    <string name="preferences_usb_dualsense_enabled_title">DualSense over USB</string>
+    <string name="preferences_usb_dualsense_enabled_summary">Take over a DualSense connected by cable for adaptive triggers, rumble, light bar and touchpad</string>
+    <string name="toast_usb_dualsense_connected">DualSense connected over USB, adaptive triggers enabled</string>
+    <string name="toast_usb_dualsense_failed">Could not take over the DualSense connected over USB</string>
     <string name="preferences_motion_enabled_title">Motion</string>
     <string name="preferences_motion_enabled_summary">Use device\'s motion sensors for controller motion</string>
     <string name="preferences_button_haptic_enabled_title">Touch Haptics</string>
@@ -129,4 +135,6 @@
     <string name="preferences_codec_key">stream_codec</string>
     <string name="preferences_idr_on_fec_failure_key">stream_idr_on_fec_failure</string>
     <string name="preferences_controller_layout_key">controller_layout</string>
+    <string name="preferences_dualsense_enabled_key">dualsense_enabled</string>
+    <string name="preferences_usb_dualsense_enabled_key">usb_dualsense_enabled</string>
 </resources>

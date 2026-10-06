@@ -4,6 +4,7 @@ package com.metallic.chiaki.main
 
 import android.app.ActivityOptions
 import android.content.Intent
+import android.hardware.usb.UsbManager
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
@@ -23,6 +24,7 @@ import com.metallic.chiaki.lib.ConnectInfo
 import com.metallic.chiaki.lib.DiscoveryHost
 import com.metallic.chiaki.manualconsole.EditManualConsoleActivity
 import com.metallic.chiaki.regist.RegistActivity
+import com.metallic.chiaki.session.DualSenseUsb
 import com.metallic.chiaki.settings.SettingsActivity
 import com.metallic.chiaki.stream.StreamActivity
 
@@ -181,11 +183,18 @@ class MainActivity : AppCompatActivity()
 		{
 			fun connect() {
 				val preferences = Preferences(this)
-				val connectInfo = ConnectInfo(host.isPS5, host.host, registeredHost.rpRegistKey, registeredHost.rpKey, preferences.videoProfile, preferences.idrOnFecFailure)
-				Intent(this, StreamActivity::class.java).let {
+				val connectInfo = ConnectInfo(host.isPS5, host.host, registeredHost.rpRegistKey, registeredHost.rpKey, preferences.videoProfile,
+					preferences.idrOnFecFailure, host.isPS5 && preferences.dualSenseEnabled)
+				fun startStream() = Intent(this, StreamActivity::class.java).let {
 					it.putExtra(StreamActivity.EXTRA_CONNECT_INFO, connectInfo)
 					startActivity(it)
 				}
+				val usbManager = getSystemService(USB_SERVICE) as UsbManager
+				val usbDualSense = if(preferences.usbDualSenseEnabled) DualSenseUsb.find(usbManager) else null
+				if(usbDualSense != null && !usbManager.hasPermission(usbDualSense))
+					DualSenseUsb.requestPermission(this, usbDualSense) { startStream() }
+				else
+					startStream()
 			}
 
 			if(host is DiscoveredDisplayHost && host.discoveredHost.state == DiscoveryHost.State.STANDBY)
