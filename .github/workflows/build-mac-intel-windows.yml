@@ -326,12 +326,28 @@ jobs:
               --jq '[.steps[] | select(.conclusion == "failure") | .name] | join(", ")' < /dev/null || true)
 
             raw="logs/${safe}.raw"
-            for i in 1 2 3 4 5 6; do
-              gh api "repos/${GITHUB_REPOSITORY}/actions/jobs/${job_id}/logs" < /dev/null > "$raw" 2>/dev/null && [ -s "$raw" ] && break
-              sleep 10
+            log_status=""
+            for i in $(seq 1 12); do
+              code=$(curl -sSL -o "$raw" -w '%{http_code}' \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/jobs/${job_id}/logs" || true)
+              if [ "$code" = "200" ] && [ -s "$raw" ]; then
+                log_status=""
+                break
+              fi
+              log_status="HTTP ${code}: $(head -c 300 "$raw" 2>/dev/null)"
+              echo "::warning::Chưa tải được log job ${job_id} (lần ${i}): ${log_status}"
+              : > "$raw"
+              sleep 15
             done
             sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g; s/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z ?//' "$raw" > "logs/${safe}.log" || true
             errors=$(grep -E "$err_re" "logs/${safe}.log" | tail -n 40 || true)
+            annotations=$(gh api "repos/${GITHUB_REPOSITORY}/check-runs/${job_id}/annotations" \
+              --jq '.[] | select(.annotation_level != "notice") | "[\(.annotation_level)] \(.message)"' < /dev/null || true)
+            if [ -z "$errors" ] && [ -n "$annotations" ]; then
+              errors="$annotations"
+            fi
 
             report="logs/${safe}-error.txt"
             {
@@ -341,6 +357,12 @@ jobs:
               echo "Nhánh: ${REF}"
               echo "Commit: ${SHA_FULL}"
               echo "Step lỗi: ${steps:-không rõ}"
+              if [ -n "$log_status" ]; then
+                echo "KHÔNG TẢI ĐƯỢC LOG: ${log_status}"
+              fi
+              echo
+              echo "===== Annotations ====="
+              echo "${annotations:-(không có)}"
               echo
               echo "===== Các dòng lỗi ====="
               echo "${errors:-(không tìm thấy dòng lỗi rõ ràng, xem 300 dòng cuối)}"
