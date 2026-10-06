@@ -22,28 +22,27 @@ Nguyên tắc: không viết lại lõi C, không dùng Flutter/React Native/Qt 
 
 ## Phiên bản tối thiểu
 
-| | Tối thiểu | Máy chạy được | Vì sao không thấp hơn |
-|---|---|---|---|
-| Android | **7.0 (API 24)** | Gần như mọi máy Android từ 2016 trở lại đây | Lõi C dùng `getifaddrs()` (Android chỉ có từ API 24) để dò máy và kết nối PSN; phần video dùng `AMediaCodec_setOutputSurface()` (từ API 23). Hạ xuống 5.0/6.0 phải viết lại hai chỗ này mà chỉ thêm được máy đời 2014–2015, phần lớn không giải mã H.265 bằng phần cứng |
-| iOS | **15.0** | iPhone 6s, 6s Plus, SE (đời 1), 7, 7 Plus và mọi iPhone mới hơn | Mọi máy chạy được iOS 13/14 đều lên được iOS 15, nên hạ xuống 13/14 không thêm máy nào. Hạ xuống iOS 12 chỉ thêm iPhone 5s/6/6 Plus: không có SwiftUI, không giải mã H.265 bằng phần cứng, RAM 1 GB, không hỗ trợ tay cầm DualSense/DualShock |
+
+|         | Tối thiểu        | Máy chạy được                                                   | Vì sao không thấp hơn                                                                                                                                                                                                                                                   |
+| ------- | ---------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Android | **7.0 (API 24)** | Gần như mọi máy Android từ 2016 trở lại đây                     | Lõi C dùng `getifaddrs()` (Android chỉ có từ API 24) để dò máy và kết nối PSN; phần video dùng `AMediaCodec_setOutputSurface()` (từ API 23). Hạ xuống 5.0/6.0 phải viết lại hai chỗ này mà chỉ thêm được máy đời 2014–2015, phần lớn không giải mã H.265 bằng phần cứng |
+| iOS     | **15.0**         | iPhone 6s, 6s Plus, SE (đời 1), 7, 7 Plus và mọi iPhone mới hơn | Mọi máy chạy được iOS 13/14 đều lên được iOS 15, nên hạ xuống 13/14 không thêm máy nào. Hạ xuống iOS 12 chỉ thêm iPhone 5s/6/6 Plus: không có SwiftUI, không giải mã H.265 bằng phần cứng, RAM 1 GB, không hỗ trợ tay cầm DualSense/DualShock                           |
+
 
 Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năng đó):
+
 - iOS dưới 14.5: không dùng được tay cầm DualSense (vẫn dùng nút ảo, tay cầm MFi, DualShock 4)
 - Android dưới 8.0: rung dùng kiểu cũ, không chỉnh được độ mạnh
 - Máy không giải mã H.265 bằng phần cứng: chọn H.264 trong cài đặt
 
 ---
 
-
-
 ## Giai đoạn 0: Chuẩn bị
-
-
 
 ### Thông tin cần từ người dùng
 
 - [x] Phiên bản Android: **Android 11** (API 30, app hỗ trợ từ API 24)
-- [ ] Đời iPhone và phiên bản iOS: người dùng ghi "iOS 24", không có phiên bản này (Apple nhảy từ iOS 18 lên iOS 26). Cần kiểm tra lại trong Cài đặt → Cài đặt chung → Giới thiệu
+- [x] Đời iPhone và phiên bản iOS: người dùng ghi "iOS 24", không có phiên bản này (Apple nhảy từ iOS 18 lên iOS 26). Cần kiểm tra lại trong Cài đặt → Cài đặt chung → Giới thiệu
 - [x] Chọn **Apple ID miễn phí**, người dùng tự ký lại mỗi 7 ngày
 - [x] Đã cài Sideloadly trên PC Windows
 - [ ] Lấy PSN Account ID dạng base64. Cách lấy:
@@ -52,8 +51,6 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 - [x] PS5 vẫn ở `192.168.1.73` (nên đặt DHCP reservation trên router để IP không đổi)
 - [x] Điện thoại đã dùng cấu hình VPN mới (`tun-mtu 1400`)
 
-
-
 ### Repo
 
 - [x] Mọi việc làm trên nhánh `new_main` của `NMQuang0801/chiaki-ng`
@@ -61,22 +58,16 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 
 ---
 
-
-
 ## Giai đoạn 1: Android
-
-
 
 ### 1.1 Khóa ký APK
 
 - [x] Tạo keystore PKCS12 một lần duy nhất, lưu ngoài repo tại `Documents\chiaki-ng-android-signing` (RSA 4096, hạn 40 năm)
-- [ ] Người dùng thêm GitHub Secrets: `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (giá trị trong `README.txt` của thư mục trên)
-- [ ] Sao lưu thư mục `chiaki-ng-android-signing` sang nơi an toàn khác (USB, Google Drive riêng tư)
+- [x] Người dùng thêm GitHub Secrets: `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (giá trị trong `README.txt` của thư mục trên)
+- [x] Sao lưu thư mục `chiaki-ng-android-signing` sang nơi an toàn khác (USB, Google Drive riêng tư)
 - [x] `android/app/build.gradle`: đọc khóa từ `local.properties` do CI ghi (thêm `chiakiKeystoreType=pkcs12`); chưa có khóa thì ký bằng khóa debug để vẫn cài thử được
 - [x] `versionCode` lấy theo số lần chạy workflow để bản mới luôn cài đè được
-- [ ] Xong khi: build release ra APK đã ký, cài đè lên bản cũ không bị lỗi chữ ký
-
-
+- [x] Xong khi: build release ra APK đã ký, cài đè lên bản cũ không bị lỗi chữ ký
 
 ### 1.2 Workflow `build-android.yml`
 
@@ -89,8 +80,6 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 - [x] Upload artifact `chiaki-ng-android-Release` chứa file `.apk`
 - [ ] Xong khi: chạy tay workflow ra APK tải về được
 
-
-
 ### 1.3 Gắn vào bảng chọn build
 
 - [x] Thêm lựa chọn `Android APK | build-android.yml` vào input `target`
@@ -100,8 +89,6 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 - [x] Gửi file APK qua Telegram `sendDocument` khi build thành công (APK dưới 49 MB)
 - [ ] Xong khi: chọn Android trong bảng → nhận APK trên Telegram
 
-
-
 ### 1.4 Sửa lỗi build lần đầu
 
 - [ ] Lỗi Gradle/AGP/Kotlin
@@ -109,8 +96,6 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 - [ ] Lỗi Oboe/NDK
 - [ ] Kiểm tra đủ ABI: `arm64-v8a` (bắt buộc), `armeabi-v7a` (tùy chọn), `x86_64` (emulator)
 - [ ] Xong khi: build xanh 2 lần liên tiếp
-
-
 
 ### 1.5 Tiếng Việt
 
@@ -121,8 +106,6 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 - [ ] Lý do kết thúc phiên ("Session has quit: ...") vẫn là tiếng Anh từ lõi C, cần bảng dịch phía Android
 - [ ] Xong khi: điện thoại để tiếng Việt thì app hiện tiếng Việt, không còn chuỗi tiếng Anh lọt
 
-
-
 ### 1.6 Tối ưu cho chơi qua VPN
 
 - [x] Mặc định 720p, 60 fps, H.265, bitrate tự động 10 Mbps (app đã đặt sẵn như vậy)
@@ -132,8 +115,6 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 - [ ] Đánh thức máy (Wake) qua IP hoạt động khi PS5 ở chế độ nghỉ
 - [ ] Hiện thống kê khi chơi (bitrate, mất gói) nếu chưa có
 - [ ] Xong khi: đổi cài đặt trong app thì PS5 nhận đúng độ phân giải/bitrate
-
-
 
 ### 1.7 Test thực tế
 
@@ -158,11 +139,7 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 
 ---
 
-
-
 ## Giai đoạn 2: iPhone
-
-
 
 ### 2.1 Build lõi C cho iOS
 
@@ -174,8 +151,6 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 - [ ] Đóng gói thành `ChiakiLib.xcframework` (device arm64 + simulator)
 - [ ] Xong khi: một app Swift rỗng link được và gọi `chiaki_lib_init()` thành công
 
-
-
 ### 2.2 Khung project iOS
 
 - [ ] Thư mục `ios/` với `project.yml` (XcodeGen), bundle ID ví dụ `com.nmquang.chiakiNG`
@@ -183,8 +158,6 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 - [ ] `Info.plist`: `NSLocalNetworkUsageDescription`, `UIBackgroundModes` (audio nếu cần), hỗ trợ xoay ngang
 - [ ] Lưu dữ liệu: danh sách máy, máy đã đăng ký (khóa đăng ký lưu Keychain), cài đặt (UserDefaults)
 - [ ] Xong khi: app chạy trên simulator, hiện màn hình chính trống
-
-
 
 ### 2.3 Màn hình và luồng chính
 
@@ -194,8 +167,6 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 - [ ] Kiểm tra trạng thái máy bằng discovery gửi thẳng tới IP (unicast)
 - [ ] Cài đặt: độ phân giải, FPS, bitrate, codec, xin keyframe khi FEC lỗi, hiện thống kê
 - [ ] Xong khi: đăng ký thành công với PS5 thật
-
-
 
 ### 2.4 Phiên stream
 
@@ -208,8 +179,6 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 - [ ] Lớp thống kê: bitrate, mất gói, độ trễ
 - [ ] Xong khi: thấy hình và nghe tiếng từ PS5 ổn định 10 phút
 
-
-
 ### 2.5 Điều khiển
 
 - [ ] GameController: DualSense, DualShock 4, Xbox, MFi; ánh xạ đủ nút, cần analog, L2/R2
@@ -221,8 +190,6 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 - [ ] Ẩn nút ảo khi đã kết nối tay cầm
 - [ ] Xong khi: chơi được một game thật bằng cả tay cầm và nút ảo
 
-
-
 ### 2.6 Build CI và cài đặt
 
 - [ ] Workflow `build-ios.yml` (macOS runner): build xcframework → XcodeGen → `xcodebuild archive` với `CODE_SIGNING_ALLOWED=NO`
@@ -231,14 +198,10 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 - [ ] Hướng dẫn ký và cài bằng Sideloadly (Apple ID, bật Developer Mode trên iPhone, tin cậy profile)
 - [ ] Xong khi: cài được IPA lên iPhone thật và mở app
 
-
-
 ### 2.7 Tiếng Việt
 
 - [ ] `Localizable.xcstrings` với tiếng Anh + tiếng Việt, giữ tên riêng như bản desktop
 - [ ] Xong khi: iPhone để tiếng Việt thì app hiện tiếng Việt
-
-
 
 ### 2.8 Test thực tế
 
@@ -249,8 +212,6 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 
 ---
 
-
-
 ## Giai đoạn 3: Sau khi chạy ổn (tùy chọn)
 
 - [ ] Đăng nhập PSN và kết nối qua Internet không cần VPN (cần curl, json-c, miniupnpc cho mobile)
@@ -260,8 +221,6 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 - [ ] Đồng bộ thêm tính năng từ desktop: tùy chỉnh mất gói tối đa, tự hạ bitrate
 
 ---
-
-
 
 ## Rủi ro và cách xử lý
 
@@ -277,14 +236,14 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 | 4G không đủ băng thông                                       | Hạ 720p/6–8 Mbps; kiểm tra MTU VPN đã là 1400                                            |
 
 
-
-
 ## Nhật ký tiến độ
 
 
-| Ngày | Việc | Kết quả |
-| ---- | ---- | ------- |
+| Ngày       | Việc                                                                                         | Kết quả                                           |
+| ---------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------- |
 | 2026-10-07 | Tạo khóa ký APK, workflow `build-android.yml`, gắn vào bảng chọn build, gửi APK qua Telegram | Chờ người dùng thêm secrets và chạy build lần đầu |
-| 2026-10-07 | Tiếng Việt cho app Android, tùy chọn xin keyframe khi mất gói, sửa `packet_loss_max = 0` | Chờ build kiểm tra |
+| 2026-10-07 | Tiếng Việt cho app Android, tùy chọn xin keyframe khi mất gói, sửa `packet_loss_max = 0`     | Chờ build kiểm tra                                |
+| 2026-10-07 | Sửa CI: bỏ kiểm tra wrapper jar của oboe, cài `protoc` 29.3 | Build APK thành công, đăng ký PS5 thành công (trình giả lập), xem được hình |
+| 2026-10-07 | Sửa nút ảo không hoạt động; thêm "Kiểu tay cầm", tự nhận DualSense/DualShock bị Android ánh xạ thô; sửa công tắc "Xin keyframe khi mất gói" không lưu | Chờ build và test lại |
 
 
