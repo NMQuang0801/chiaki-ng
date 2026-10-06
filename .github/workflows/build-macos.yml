@@ -2,6 +2,12 @@ name: Build chiaki-ng macOSX
 
 on:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        required: false
+        default: ''
+        type: string
 
 jobs:
   build-mac_arm64:
@@ -10,6 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.ref }}
           submodules: recursive
 
       - name: Install protobuf

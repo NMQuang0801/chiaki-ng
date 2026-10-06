@@ -7,6 +7,12 @@ on:
         description: "libplacebo git tag to build"
         required: false
         default: "3be579e6c7f6b421d9ac3ab4860edc437c50b3eb"
+  workflow_call:
+    inputs:
+      ref:
+        required: false
+        default: ''
+        type: string
 
 jobs:
   build-windows_x64-msys2:
@@ -23,6 +29,7 @@ jobs:
           git config --global core.eol lf
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.ref }}
           submodules: recursive
       - uses: msys2/setup-msys2@v2
         with:

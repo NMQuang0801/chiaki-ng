@@ -1,0 +1,134 @@
+name: Build chiaki-ng macOSX Intel x86_64
+
+on:
+  workflow_dispatch:
+    inputs:
+      brew_snapshot:
+        description: 'Ngày chốt homebrew-core (YYYY-MM-DD, trước 2026-08-28 để còn gói dựng sẵn cho Intel)'
+        required: false
+        default: '2026-08-20'
+        type: string
+  workflow_call:
+    inputs:
+      ref:
+        required: false
+        default: ''
+        type: string
+      brew_snapshot:
+        required: false
+        default: '2026-08-20'
+        type: string
+
+jobs:
+  build-mac_x86_64:
+    name: Build macOSX Intel x86_64 version
+    runs-on: macos-15-intel
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          submodules: recursive
+
+      # Qt from the official installer (universal binaries) instead of Homebrew,
+      # since Homebrew no longer guarantees Intel bottles for large formulae like qt@6
+      - name: Setup Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.9.*"
+          host: mac
+          target: desktop
+          modules: 'qtwebengine qtpositioning qtwebchannel qtwebsockets'
+          cache: true
+
+      - name: Install protobuf
+        run: |
+          pip3 install --user 'protobuf>=5,<6' --break-system-packages
+
+      # Homebrew stopped building macOS Intel bottles on 2026-08-28; newer formulae
+      # would build from source (and fetch from the often unreachable ftp.gnu.org)
+      - name: Pin homebrew-core to a snapshot with Intel bottles
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SNAPSHOT: ${{ inputs.brew_snapshot || '2026-08-20' }}
+        run: |
+          sha=$(gh api "repos/Homebrew/homebrew-core/commits?until=${SNAPSHOT}T00:00:00Z&per_page=1" --jq '.[0].sha')
+          if [ -z "$sha" ]; then
+            echo "::error::Không tìm thấy commit homebrew-core trước ${SNAPSHOT}"
+            exit 1
+          fi
+          echo "homebrew-core snapshot ${SNAPSHOT}: ${sha}"
+
+          core="$(brew --repository)/Library/Taps/homebrew/homebrew-core"
+          rm -rf "$core"
+          mkdir -p "$core"
+          git -C "$core" init -q
+          git -C "$core" remote add origin https://github.com/Homebrew/homebrew-core
+          git -C "$core" fetch -q --depth=1 origin "$sha"
+          git -C "$core" checkout -q FETCH_HEAD
+
+          {
+            echo "HOMEBREW_NO_INSTALL_FROM_API=1"
+            echo "HOMEBREW_NO_AUTO_UPDATE=1"
+            echo "HOMEBREW_NO_INSTALL_UPGRADE=1"
+            echo "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1"
+          } >> "$GITHUB_ENV"
+
+      - name: Install brew dependencies
+        run: |
+          brew uninstall pkgconfig || true
+          brew install ffmpeg pkgconfig opus openssl@3 cmake ninja nasm protobuf@29 speexdsp libplacebo wget python-setuptools json-c miniupnpc libevent
+
+      - name: Install sdl2-compat
+        run: |
+          sudo INSTALL_PREFIX=/usr/local scripts/build-sdl2-compat.sh
+          sudo cp /usr/local/lib/pkgconfig/sdl2-compat.pc /usr/local/lib/pkgconfig/sdl2.pc
+
+      - name: Configure chiaki-ng
+        run: |
+          cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release \
+            -DCHIAKI_ENABLE_CLI=OFF -DCHIAKI_ENABLE_STEAMDECK_NATIVE=OFF \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR};$(brew --prefix)/opt/openssl@3;$(brew --prefix)/opt/protobuf@29"
+
+      - name: Build chiaki-ng
+        run: |
+          export CPATH=$(brew --prefix)/opt/ffmpeg/include
+          cmake --build build --config Release --clean-first --target chiaki
+
+      - name: Deploy chiaki-ng
+        run: |
+          rm -rf chiaki-ng.app chiaki-ng.dmg
+          cp -a build/gui/chiaki.app chiaki-ng.app
+          cp scripts/qtwebengine_import.qml gui/src/qml/
+          MACDEPLOYQT="${QT_ROOT_DIR}/bin/macdeployqt"
+          "$MACDEPLOYQT" chiaki-ng.app -qmldir="$PWD/gui/src/qml" -libpath=$(brew --prefix)/lib
+          mkdir -p chiaki-ng.app/Contents/Resources/vulkan/icd.d
+          wget https://github.com/KhronosGroup/MoltenVK/releases/download/v1.2.9/MoltenVK-macos.tar && tar xf MoltenVK-macos.tar
+          cp MoltenVK/MoltenVK/dylib/macOS/* chiaki-ng.app/Contents/Resources/vulkan/icd.d
+          "$MACDEPLOYQT" chiaki-ng.app -qmldir="$PWD/gui/src/qml" -libpath=$(brew --prefix)/lib
+          WEBENGINE_HELPER=chiaki-ng.app/Contents/Frameworks/QtWebEngineCore.framework/Helpers/QtWebEngineProcess.app/Contents
+          if [[ -d "$WEBENGINE_HELPER" && ! -e "$WEBENGINE_HELPER/Frameworks" ]]
+          then
+            ln -s ../../../../../../../Frameworks "$WEBENGINE_HELPER"
+          fi
+          cp /usr/local/lib/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL3.dylib
+          cp /usr/local/lib/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib
+          install_name_tool -id @executable_path/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL3.dylib
+          install_name_tool -id @executable_path/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib
+          install_name_tool -change /usr/local/lib/libSDL3.dylib @executable_path/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib || true
+          install_name_tool -change @rpath/libSDL3.dylib @executable_path/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib || true
+          install_name_tool -change /usr/local/lib/libSDL2-2.0.0.dylib @executable_path/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/chiaki || true
+          install_name_tool -change @rpath/libSDL2-2.0.0.dylib @executable_path/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/chiaki || true
+          [[ -e chiaki-ng.app/Contents/Frameworks/vulkan ]] || ln -s libvulkan.1.dylib chiaki-ng.app/Contents/Frameworks/vulkan
+          codesign --force --entitlements gui/entitlements.xml --deep --sign - chiaki-ng.app
+          hdiutil create -srcfolder chiaki-ng.app chiaki-ng.dmg
+          codesign --force --entitlements gui/entitlements.xml --deep --sign - chiaki-ng.dmg
+
+      - name: Upload chiaki-ng Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chiaki-ng-macos_x86_64-Release
+          path: chiaki-ng.dmg
+          if-no-files-found: error
+          retention-days: 14

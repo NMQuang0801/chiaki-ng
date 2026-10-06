@@ -1,5 +1,5 @@
-name: Build chiaki-ng macOS Intel + Windows x64
-run-name: Build ${{ inputs.ref }} (${{ inputs.platform }})
+name: Build chiaki-ng (chọn bản build)
+run-name: Build ${{ inputs.ref }} - ${{ inputs.target }}
 
 on:
   workflow_dispatch:
@@ -9,297 +9,153 @@ on:
         required: true
         default: 'new_main'
         type: string
-      platform:
-        description: 'Nền tảng cần build'
+      target:
+        description: 'Bản cần build (chạy đúng file workflow ghi sau dấu |)'
         required: true
-        default: 'all'
+        default: 'macOS Intel x86_64 | build-macos-intel.yml'
         type: choice
         options:
-          - all
-          - macos-intel
-          - windows
+          - 'macOS Intel x86_64 | build-macos-intel.yml'
+          - 'macOS arm64 (chip M) | build-macos-arm.yml'
+          - 'macOS arm64 (chip M) | build-macos.yml'
+          - 'Windows x64 MSYS2 | build-msys2.yml'
+          - 'Windows x64 MSYS2 SDL2 | build-msys2-sdl2.yml'
+          - 'Windows x64 VC | build-windows-x86.yml'
+          - 'Windows arm64 MSYS2 | build-msys2-arm.yml'
+          - 'Windows arm64 VC | build-windows-arm.yml'
+          - 'Windows arm64 VC portable | build-windows-arm-portable.yml'
       create_release:
         description: 'Tạo GitHub Release (giữ file lâu dài, tải không cần đăng nhập)'
         required: false
         default: false
         type: boolean
       brew_snapshot:
-        description: 'macOS Intel: ngày chốt homebrew-core (YYYY-MM-DD, trước 2026-08-28 để còn gói dựng sẵn cho Intel)'
+        description: 'Chỉ cho macOS Intel: ngày chốt homebrew-core (YYYY-MM-DD, trước 2026-08-28)'
         required: false
         default: '2026-08-20'
         type: string
 
+permissions:
+  contents: read
+
 jobs:
-  build-mac_x86_64:
-    name: Build macOS Intel (x86_64)
-    if: inputs.platform == 'all' || inputs.platform == 'macos-intel'
-    runs-on: macos-15-intel
-    timeout-minutes: 360
+  prepare:
+    name: Resolve commit
+    runs-on: ubuntu-latest
     outputs:
-      sha: ${{ steps.label.outputs.sha }}
-      sha_full: ${{ steps.label.outputs.sha_full }}
+      sha: ${{ steps.resolve.outputs.sha }}
+      sha_full: ${{ steps.resolve.outputs.sha_full }}
+      slug: ${{ steps.resolve.outputs.slug }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
-          submodules: recursive
+          fetch-depth: 1
 
-      - name: Build label
-        id: label
+      - name: Resolve commit and target
+        id: resolve
         env:
-          REF: ${{ inputs.ref }}
+          TARGET: ${{ inputs.target }}
         run: |
-          sha=$(git rev-parse --short HEAD)
-          echo "BUILD_LABEL=$(echo "$REF" | tr '/\\:' '---')-${sha}" >> "$GITHUB_ENV"
-          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
-          echo "sha_full=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      # Qt from the official installer (universal binaries) instead of Homebrew,
-      # since Homebrew no longer guarantees Intel bottles for large formulae like qt@6
-      - name: Setup Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: "6.9.*"
-          host: mac
-          target: desktop
-          modules: 'qtwebengine qtpositioning qtwebchannel qtwebsockets'
-          cache: true
-
-      - name: Install protobuf
-        run: |
-          pip3 install --user 'protobuf>=5,<6' --break-system-packages
-
-      # Homebrew stopped building macOS Intel bottles on 2026-08-28; newer formulae
-      # would build from source (and fetch from the often unreachable ftp.gnu.org)
-      - name: Pin homebrew-core to a snapshot with Intel bottles
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SNAPSHOT: ${{ inputs.brew_snapshot || '2026-08-20' }}
-        run: |
-          sha=$(gh api "repos/Homebrew/homebrew-core/commits?until=${SNAPSHOT}T00:00:00Z&per_page=1" --jq '.[0].sha')
-          if [ -z "$sha" ]; then
-            echo "::error::Không tìm thấy commit homebrew-core trước ${SNAPSHOT}"
-            exit 1
-          fi
-          echo "homebrew-core snapshot ${SNAPSHOT}: ${sha}"
-
-          core="$(brew --repository)/Library/Taps/homebrew/homebrew-core"
-          rm -rf "$core"
-          mkdir -p "$core"
-          git -C "$core" init -q
-          git -C "$core" remote add origin https://github.com/Homebrew/homebrew-core
-          git -C "$core" fetch -q --depth=1 origin "$sha"
-          git -C "$core" checkout -q FETCH_HEAD
-
+          file="${TARGET##*| }"
+          slug="${file%.yml}"
+          slug="${slug#build-}"
           {
-            echo "HOMEBREW_NO_INSTALL_FROM_API=1"
-            echo "HOMEBREW_NO_AUTO_UPDATE=1"
-            echo "HOMEBREW_NO_INSTALL_UPGRADE=1"
-            echo "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1"
-          } >> "$GITHUB_ENV"
+            echo "sha=$(git rev-parse --short HEAD)"
+            echo "sha_full=$(git rev-parse HEAD)"
+            echo "slug=${slug}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Build ${file} @ $(git rev-parse HEAD)"
 
-      - name: Install brew dependencies
-        run: |
-          brew uninstall pkgconfig || true
-          brew install ffmpeg pkgconfig opus openssl@3 cmake ninja nasm protobuf@29 speexdsp libplacebo wget python-setuptools json-c miniupnpc libevent
+  build-macos-intel:
+    name: macOS Intel x86_64
+    needs: prepare
+    if: endsWith(inputs.target, '| build-macos-intel.yml')
+    uses: ./.github/workflows/build-macos-intel.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha_full }}
+      brew_snapshot: ${{ inputs.brew_snapshot }}
 
-      - name: Install sdl2-compat
-        run: |
-          sudo INSTALL_PREFIX=/usr/local scripts/build-sdl2-compat.sh
-          sudo cp /usr/local/lib/pkgconfig/sdl2-compat.pc /usr/local/lib/pkgconfig/sdl2.pc
+  build-macos-arm:
+    name: macOS arm64 (build-macos-arm)
+    needs: prepare
+    if: endsWith(inputs.target, '| build-macos-arm.yml')
+    uses: ./.github/workflows/build-macos-arm.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha_full }}
 
-      - name: Configure chiaki-ng
-        run: |
-          cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release \
-            -DCHIAKI_ENABLE_CLI=OFF -DCHIAKI_ENABLE_STEAMDECK_NATIVE=OFF \
-            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
-            -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR};$(brew --prefix)/opt/openssl@3;$(brew --prefix)/opt/protobuf@29"
+  build-macos:
+    name: macOS arm64 (build-macos)
+    needs: prepare
+    if: endsWith(inputs.target, '| build-macos.yml')
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha_full }}
 
-      - name: Build chiaki-ng
-        run: |
-          export CPATH=$(brew --prefix)/opt/ffmpeg/include
-          cmake --build build --config Release --clean-first --target chiaki
+  build-msys2:
+    name: Windows x64 MSYS2
+    needs: prepare
+    if: endsWith(inputs.target, '| build-msys2.yml')
+    uses: ./.github/workflows/build-msys2.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha_full }}
 
-      - name: Deploy chiaki-ng
-        run: |
-          rm -rf chiaki-ng.app chiaki-ng.dmg
-          cp -a build/gui/chiaki.app chiaki-ng.app
-          cp scripts/qtwebengine_import.qml gui/src/qml/
-          MACDEPLOYQT="${QT_ROOT_DIR}/bin/macdeployqt"
-          "$MACDEPLOYQT" chiaki-ng.app -qmldir="$PWD/gui/src/qml" -libpath=$(brew --prefix)/lib
-          mkdir -p chiaki-ng.app/Contents/Resources/vulkan/icd.d
-          wget https://github.com/KhronosGroup/MoltenVK/releases/download/v1.2.9/MoltenVK-macos.tar && tar xf MoltenVK-macos.tar
-          cp MoltenVK/MoltenVK/dylib/macOS/* chiaki-ng.app/Contents/Resources/vulkan/icd.d
-          "$MACDEPLOYQT" chiaki-ng.app -qmldir="$PWD/gui/src/qml" -libpath=$(brew --prefix)/lib
-          WEBENGINE_HELPER=chiaki-ng.app/Contents/Frameworks/QtWebEngineCore.framework/Helpers/QtWebEngineProcess.app/Contents
-          if [[ -d "$WEBENGINE_HELPER" && ! -e "$WEBENGINE_HELPER/Frameworks" ]]
-          then
-            ln -s ../../../../../../../Frameworks "$WEBENGINE_HELPER"
-          fi
-          cp /usr/local/lib/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL3.dylib
-          cp /usr/local/lib/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib
-          install_name_tool -id @executable_path/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL3.dylib
-          install_name_tool -id @executable_path/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib
-          install_name_tool -change /usr/local/lib/libSDL3.dylib @executable_path/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib || true
-          install_name_tool -change @rpath/libSDL3.dylib @executable_path/libSDL3.dylib chiaki-ng.app/Contents/MacOS/libSDL2-2.0.0.dylib || true
-          install_name_tool -change /usr/local/lib/libSDL2-2.0.0.dylib @executable_path/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/chiaki || true
-          install_name_tool -change @rpath/libSDL2-2.0.0.dylib @executable_path/libSDL2-2.0.0.dylib chiaki-ng.app/Contents/MacOS/chiaki || true
-          [[ -e chiaki-ng.app/Contents/Frameworks/vulkan ]] || ln -s libvulkan.1.dylib chiaki-ng.app/Contents/Frameworks/vulkan
-          codesign --force --entitlements gui/entitlements.xml --deep --sign - chiaki-ng.app
-          hdiutil create -srcfolder chiaki-ng.app chiaki-ng.dmg
-          codesign --force --entitlements gui/entitlements.xml --deep --sign - chiaki-ng.dmg
-          cp chiaki-ng.dmg "chiaki-ng-macos_x86_64-${BUILD_LABEL}.dmg"
+  build-msys2-sdl2:
+    name: Windows x64 MSYS2 SDL2
+    needs: prepare
+    if: endsWith(inputs.target, '| build-msys2-sdl2.yml')
+    uses: ./.github/workflows/build-msys2-sdl2.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha_full }}
 
-      - name: Upload chiaki-ng Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: chiaki-ng-macos_x86_64-${{ env.BUILD_LABEL }}
-          path: chiaki-ng-macos_x86_64-*.dmg
-          if-no-files-found: error
-          retention-days: 14
+  build-windows-x86:
+    name: Windows x64 VC
+    needs: prepare
+    if: endsWith(inputs.target, '| build-windows-x86.yml')
+    uses: ./.github/workflows/build-windows-x86.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha_full }}
 
-  build-windows_x64-msys2:
-    name: Build Windows x64 (MSYS2)
-    if: inputs.platform == 'all' || inputs.platform == 'windows'
-    runs-on: windows-latest
-    outputs:
-      sha: ${{ steps.label.outputs.sha }}
-      sha_full: ${{ steps.label.outputs.sha_full }}
-    defaults:
-      run:
-        shell: msys2 {0}
-    steps:
-      - name: Disable autocrlf
-        shell: pwsh
-        run: |
-          git config --global core.autocrlf false
-          git config --global core.eol lf
+  build-msys2-arm:
+    name: Windows arm64 MSYS2
+    needs: prepare
+    if: endsWith(inputs.target, '| build-msys2-arm.yml')
+    uses: ./.github/workflows/build-msys2-arm.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha_full }}
 
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref }}
-          submodules: recursive
+  build-windows-arm:
+    name: Windows arm64 VC
+    needs: prepare
+    if: endsWith(inputs.target, '| build-windows-arm.yml')
+    uses: ./.github/workflows/build-windows-arm.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha_full }}
 
-      - name: Build label
-        id: label
-        shell: pwsh
-        env:
-          REF: ${{ inputs.ref }}
-        run: |
-          $sha = git rev-parse --short HEAD
-          $label = ($env:REF -replace '[/\\:]', '-') + '-' + $sha
-          "BUILD_LABEL=$label" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "sha_full=$(git rev-parse HEAD)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: mingw64
-          update: true
-          install: git
-          pacboy: >-
-            ca-certificates:p
-            cc:p
-            cmake:p
-            curl:p
-            diffutils:p
-            fast_float:p
-            fftw:p
-            hidapi:p
-            json-c:p
-            libevent:p
-            lcms2:p
-            libdovi:p
-            meson:p
-            miniupnpc:p
-            gcc:p
-            nasm:p
-            ninja:p
-            openssl:p
-            opus:p
-            pkgconf:p
-            protobuf:p
-            python:p
-            python-psutil:p
-            python-glad:p
-            python-jinja:p
-            python-pip:p
-            qt6-base:p
-            qt6-declarative:p
-            qt6-svg:p
-            shaderc:p
-            speexdsp:p
-            spirv-cross:p
-            vulkan:p
-            vulkan-headers:p
-            compiler-rt:p
-
-      - name: Install python protobuf and zip
-        run: |
-          pip install protobuf
-          pacman -S git make unzip zip --noconfirm
-
-      - name: Build libplacebo
-        run: |
-          scripts/build-libplacebo-windows.sh
-
-      - name: Setup ffmpeg
-        run: |
-          curl -LO https://github.com/streetpea/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-win64-gpl-shared-7.1.zip
-          unzip ffmpeg-n7.1-latest-win64-gpl-shared-7.1.zip
-          cp -a "ffmpeg-n7.1-latest-win64-gpl-shared-7.1/bin/." /mingw64/bin
-          cp -a "ffmpeg-n7.1-latest-win64-gpl-shared-7.1/include/." /mingw64/include
-          cp -a "ffmpeg-n7.1-latest-win64-gpl-shared-7.1/lib/." /mingw64/lib
-
-      - name: Build sdl2-compat
-        run: |
-          INSTALL_PREFIX=/mingw64 scripts/build-sdl2-compat.sh .
-          cp /mingw64/lib/pkgconfig/sdl2-compat.pc /mingw64/lib/pkgconfig/sdl2.pc
-
-      - name: Configure chiaki-ng
-        run: |
-          cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCHIAKI_ENABLE_CLI=OFF
-
-      - name: Build chiaki-ng
-        run: |
-          cmake --build build --config Release --clean-first --target chiaki
-
-      - name: Deploy chiaki-ng
-        run: |
-          ./scripts/deploy-windows-msys2.sh chiaki-ng-Win build/gui/chiaki.exe "${{ github.workspace }}/build/third-party/cpp-steam-tools" /mingw64 gui/src/qml
-
-      - name: Package chiaki-ng
-        run: |
-          zip -r "chiaki-ng-win_x64-portable-${BUILD_LABEL}.zip" chiaki-ng-Win
-
-      - name: Upload portable zip
-        uses: actions/upload-artifact@v4
-        with:
-          name: chiaki-ng-win_x64-portable-${{ env.BUILD_LABEL }}
-          path: chiaki-ng-win_x64-portable-*.zip
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Compile .ISS to .EXE Installer
-        uses: Minionguyjpro/Inno-Setup-Action@v1.2.7
-        with:
-          path: "scripts/chiaki-ng.iss"
-          options: /O+
-
-      - name: Upload installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: chiaki-ng-win_x64-installer-${{ env.BUILD_LABEL }}
-          path: chiaki-ng-windows-installer.exe
-          if-no-files-found: error
-          retention-days: 14
+  build-windows-arm-portable:
+    name: Windows arm64 VC portable
+    needs: prepare
+    if: endsWith(inputs.target, '| build-windows-arm-portable.yml')
+    uses: ./.github/workflows/build-windows-arm-portable.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha_full }}
 
   release:
     name: Create GitHub Release
-    needs: [ build-mac_x86_64, build-windows_x64-msys2 ]
+    needs:
+      - prepare
+      - build-macos-intel
+      - build-macos-arm
+      - build-macos
+      - build-msys2
+      - build-msys2-sdl2
+      - build-windows-x86
+      - build-msys2-arm
+      - build-windows-arm
+      - build-windows-arm-portable
     if: >-
       always() && inputs.create_release &&
-      contains(needs.*.result, 'success') &&
+      needs.prepare.result == 'success' &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
@@ -310,7 +166,6 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: chiaki-ng-*
           path: dist
           merge-multiple: true
 
@@ -319,23 +174,39 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REF: ${{ inputs.ref }}
-          SHA: ${{ needs.build-mac_x86_64.outputs.sha_full || needs.build-windows_x64-msys2.outputs.sha_full }}
+          TARGET: ${{ inputs.target }}
+          SHA: ${{ needs.prepare.outputs.sha_full }}
+          SLUG: ${{ needs.prepare.outputs.slug }}
         run: |
           short="${SHA::7}"
           safe_ref=$(echo "$REF" | tr '/\\: ' '----')
           tag="build-${safe_ref}-${short}"
+          prefix="chiaki-ng-${SLUG}-${safe_ref}-${short}"
 
-          if [ -f dist/chiaki-ng-windows-installer.exe ]; then
-            mv dist/chiaki-ng-windows-installer.exe "dist/chiaki-ng-win_x64-installer-${safe_ref}-${short}.exe"
+          mkdir -p out
+          for f in dist/*; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f")
+            case "$base" in
+              *.dmg) new="${prefix}.dmg" ;;
+              *.exe) new="${prefix}-installer.exe" ;;
+              *.zip) new="${prefix}-portable.zip" ;;
+              *)     new="${prefix}-${base}" ;;
+            esac
+            mv "$f" "out/${new}"
+          done
+          ls -la out
+          if [ -z "$(ls -A out)" ]; then
+            echo "::error::Không có file nào để đưa lên Release"
+            exit 1
           fi
-          ls -la dist
 
-          notes=$(printf 'Build tự động từ `%s` (commit %s).\n\n- macOS Intel: file `.dmg` (cần macOS 15 trở lên)\n- Windows x64: bản portable `.zip` và trình cài đặt `.exe`\n\nApp chưa được ký: trên macOS dùng System Settings > Privacy & Security > Open Anyway hoặc `xattr -cr /Applications/chiaki-ng.app`; trên Windows chọn More info > Run anyway.' "$REF" "$short")
+          notes=$(printf 'Build tự động từ `%s` (commit %s).\n\nApp chưa được ký: trên macOS dùng System Settings > Privacy & Security > Open Anyway hoặc `xattr -cr /Applications/chiaki-ng.app`; trên Windows chọn More info > Run anyway.' "$REF" "$short")
 
           if gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/* --clobber -R "$GITHUB_REPOSITORY"
+            gh release upload "$tag" out/* --clobber -R "$GITHUB_REPOSITORY"
           else
-            gh release create "$tag" dist/* -R "$GITHUB_REPOSITORY" \
+            gh release create "$tag" out/* -R "$GITHUB_REPOSITORY" \
               --target "$SHA" \
               --title "chiaki-ng ${REF} (${short})" \
               --notes "$notes" \
@@ -346,7 +217,18 @@ jobs:
 
   notify-telegram:
     name: Telegram notification
-    needs: [ build-mac_x86_64, build-windows_x64-msys2, release ]
+    needs:
+      - prepare
+      - build-macos-intel
+      - build-macos-arm
+      - build-macos
+      - build-msys2
+      - build-msys2-sdl2
+      - build-windows-x86
+      - build-msys2-arm
+      - build-windows-arm
+      - build-windows-arm-portable
+      - release
     if: always()
     runs-on: ubuntu-latest
     permissions:
@@ -357,14 +239,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: '-1004406444186'
+          NEEDS_JSON: ${{ toJSON(needs) }}
           REF: ${{ inputs.ref }}
-          PLATFORM: ${{ inputs.platform }}
-          MAC_RESULT: ${{ needs.build-mac_x86_64.result }}
-          WIN_RESULT: ${{ needs.build-windows_x64-msys2.result }}
+          TARGET: ${{ inputs.target }}
+          PREPARE_RESULT: ${{ needs.prepare.result }}
           RELEASE_RESULT: ${{ needs.release.result }}
           RELEASE_URL: ${{ needs.release.outputs.url }}
-          SHA: ${{ needs.build-mac_x86_64.outputs.sha || needs.build-windows_x64-msys2.outputs.sha || '-' }}
-          SHA_FULL: ${{ needs.build-mac_x86_64.outputs.sha_full || needs.build-windows_x64-msys2.outputs.sha_full || '-' }}
+          SHA: ${{ needs.prepare.outputs.sha || '-' }}
+          SHA_FULL: ${{ needs.prepare.outputs.sha_full || '-' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           ACTOR: ${{ github.actor }}
         run: |
@@ -398,9 +280,15 @@ jobs:
             esac
           }
 
-          if [ "$MAC_RESULT" = "failure" ] || [ "$WIN_RESULT" = "failure" ]; then
+          if [ "$PREPARE_RESULT" = "success" ]; then
+            build_result=$(printf '%s' "$NEEDS_JSON" | jq -r '[to_entries[] | select(.key | startswith("build-")) | .value.result | select(. != "skipped")] | first // "skipped"')
+          else
+            build_result="$PREPARE_RESULT"
+          fi
+
+          if [ "$build_result" = "failure" ]; then
             title="[LỖI] chiaki-ng build thất bại"
-          elif [ "$MAC_RESULT" = "cancelled" ] || [ "$WIN_RESULT" = "cancelled" ]; then
+          elif [ "$build_result" = "cancelled" ]; then
             title="[HỦY] chiaki-ng build bị hủy"
           elif [ "$RELEASE_RESULT" = "failure" ]; then
             title="[LỖI] chiaki-ng build xong nhưng tạo Release thất bại"
@@ -416,16 +304,15 @@ jobs:
             release_line="Release: không tạo"
           fi
 
-          text=$(printf '%s\n\nNhánh: %s\nCommit: %s\nNền tảng: %s\n\nmacOS Intel: %s\nWindows x64: %s\n\n%s\n\nNgười chạy: %s\nLog / artifacts: %s' \
-            "$title" "$REF" "$SHA" "$PLATFORM" \
-            "$(status "$MAC_RESULT")" "$(status "$WIN_RESULT")" \
+          text=$(printf '%s\n\nBản build: %s\nNhánh: %s\nCommit: %s\nKết quả: %s\n\n%s\n\nNgười chạy: %s\nLog / artifacts: %s' \
+            "$title" "$TARGET" "$REF" "$SHA" "$(status "$build_result")" \
             "$release_line" \
             "$ACTOR" "$RUN_URL")
 
           err_re='##\[error\]|[Ee]rror:|ERROR:|[Ff]atal:|FAILED|CMake Error|undefined reference|No such file or directory|command not found|Process completed with exit code'
           mkdir -p logs
           : > failed_jobs.tsv
-          if [ "$MAC_RESULT" = "failure" ] || [ "$WIN_RESULT" = "failure" ] || [ "$RELEASE_RESULT" = "failure" ]; then
+          if [ "$build_result" = "failure" ] || [ "$RELEASE_RESULT" = "failure" ]; then
             gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs" \
               --jq '.jobs[] | select(.conclusion == "failure") | [.id, .name] | @tsv' \
               < /dev/null > failed_jobs.tsv || echo "::warning::Không lấy được danh sách job lỗi"
@@ -449,6 +336,7 @@ jobs:
             report="logs/${safe}-error.txt"
             {
               echo "Run: ${RUN_URL}"
+              echo "Bản build: ${TARGET}"
               echo "Job: ${job_name}"
               echo "Nhánh: ${REF}"
               echo "Commit: ${SHA_FULL}"
