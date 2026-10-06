@@ -356,7 +356,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID: '-1004406444186'
           REF: ${{ inputs.ref }}
           PLATFORM: ${{ inputs.platform }}
           MAC_RESULT: ${{ needs.build-mac_x86_64.result }}
@@ -368,10 +368,25 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           ACTOR: ${{ github.actor }}
         run: |
-          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
-            echo "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID secrets not set, skipping notification"
+          TELEGRAM_BOT_TOKEN=$(printf '%s' "$TELEGRAM_BOT_TOKEN" | tr -d '[:space:]')
+          TELEGRAM_CHAT_ID=$(printf '%s' "$TELEGRAM_CHAT_ID" | tr -d '[:space:]')
+          if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+            echo "::warning::Secret TELEGRAM_BOT_TOKEN chưa được tạo, bỏ qua thông báo Telegram"
             exit 0
           fi
+
+          tg() {
+            local method="$1"; shift
+            local resp
+            resp=$(curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}" "$@" || true)
+            if printf '%s' "$resp" | jq -e '.ok == true' > /dev/null 2>&1; then
+              return 0
+            fi
+            local reason
+            reason=$(printf '%s' "$resp" | jq -r '[.description, (.parameters.migrate_to_chat_id // empty | "migrate_to_chat_id=\(.)")] | join(" | ")' 2>/dev/null || true)
+            echo "::error::Telegram ${method} lỗi (chat_id=${TELEGRAM_CHAT_ID}): ${reason:-$resp}"
+            return 1
+          }
 
           status() {
             case "$1" in
@@ -465,16 +480,16 @@ jobs:
             text="${text:0:3900}"$'\n...(đã cắt bớt, xem file log)'
           fi
 
-          curl -sS --fail-with-body -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+          tg sendMessage \
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
             --data-urlencode "text=${text}" \
-            --data-urlencode "disable_web_page_preview=true" > /dev/null
+            --data-urlencode "disable_web_page_preview=true"
 
           for f in logs/*-error.txt logs/*-error.txt.gz; do
             [ -f "$f" ] || continue
-            curl -sS --fail-with-body -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+            tg sendDocument \
               --form-string "chat_id=${TELEGRAM_CHAT_ID}" \
               -F "document=@${f}" \
-              --form-string "caption=Log lỗi ${REF} (${SHA}): $(basename "$f")" > /dev/null \
+              --form-string "caption=Log lỗi ${REF} (${SHA}): $(basename "$f")" \
               || echo "::warning::Gửi file $f lên Telegram thất bại"
           done
