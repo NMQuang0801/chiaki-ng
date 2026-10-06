@@ -53,6 +53,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: ${{ env.GRADLE_VERSION }}
+          # The oboe submodule ships sample apps with wrapper jars unknown to the validator; we never run them.
+          validate-wrappers: false
 
       - name: Configure signing
         working-directory: android
