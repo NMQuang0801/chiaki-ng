@@ -115,6 +115,7 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 - [x] Tự nhớ IP của PS5 đã đăng ký khi tìm thấy trong mạng nhà, để ra 5G + VPN vẫn hiện máy
 - [x] Sửa lỗi đăng ký với Broadcast báo "Invalid argument" (lõi C gửi tới cổng 0)
 - [ ] Đánh thức máy (Wake) qua IP hoạt động khi PS5 ở chế độ nghỉ
+- [ ] Nút **Cho PS5 nghỉ** (`chiaki_session_goto_bed`) trong lúc stream và khi giữ tay vào máy trong danh sách, để cho máy nghỉ rồi đánh thức lại từ xa khi PS5 chập chờn (làm sau)
 - [ ] Hiện thống kê khi chơi (bitrate, mất gói) nếu chưa có
 - [ ] Xong khi: đổi cài đặt trong app thì PS5 nhận đúng độ phân giải/bitrate
 
