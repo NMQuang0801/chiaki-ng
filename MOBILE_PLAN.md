@@ -111,7 +111,9 @@ Tính năng phụ thuộc phiên bản (app vẫn chạy, chỉ tắt tính năn
 - [x] Mặc định 720p, 60 fps, H.265, bitrate tự động 10 Mbps (app đã đặt sẵn như vậy)
 - [x] Nối tùy chọn "Xin keyframe khi mất gói" (`enable_idr_on_fec_failure`) từ cài đặt vào JNI, mặc định bật
 - [x] Sửa lỗi `packet_loss_max = 0` trong JNI: trước đây app luôn báo PS5 mất 0% gói nên PS5 không tự hạ bitrate khi mạng yếu. Nay dùng 5% như bản desktop
-- [ ] Màn hình thêm máy bằng IP: nhập IP/hostname, chọn máy đã đăng ký
+- [x] Màn hình thêm máy bằng IP: nhập IP/hostname, chọn máy đã đăng ký (app có sẵn: + → Thêm máy thủ công)
+- [x] Tự nhớ IP của PS5 đã đăng ký khi tìm thấy trong mạng nhà, để ra 5G + VPN vẫn hiện máy
+- [x] Sửa lỗi đăng ký với Broadcast báo "Invalid argument" (lõi C gửi tới cổng 0)
 - [ ] Đánh thức máy (Wake) qua IP hoạt động khi PS5 ở chế độ nghỉ
 - [ ] Hiện thống kê khi chơi (bitrate, mất gói) nếu chưa có
 - [ ] Xong khi: đổi cài đặt trong app thì PS5 nhận đúng độ phân giải/bitrate
