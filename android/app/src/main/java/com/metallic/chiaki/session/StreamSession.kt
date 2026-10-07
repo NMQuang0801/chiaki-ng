@@ -152,4 +152,6 @@ class StreamSession(val connectInfo: ConnectInfo, val logManager: LogManager, va
 	{
 		session?.setLoginPin(pin)
 	}
+
+	fun gotoBed(): Boolean = session?.gotoBed()?.isSuccess ?: false
 }

@@ -7,6 +7,7 @@ import android.animation.AnimatorListenerAdapter
 import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.DialogInterface
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Matrix
@@ -58,6 +59,7 @@ class StreamActivity : AppCompatActivity()
 	{
 		const val EXTRA_CONNECT_INFO = "connect_info"
 		private const val HIDE_UI_TIMEOUT_MS = 2000L
+		private const val GOTO_BED_QUIT_TIMEOUT_MS = 3000L
 	}
 
 	private lateinit var viewModel: StreamViewModel
@@ -125,6 +127,8 @@ class StreamActivity : AppCompatActivity()
 			adjustStreamViewAspect()
 			showOverlay()
 		}
+
+		binding.gotoBedButton.setOnClickListener { confirmGotoBed() }
 
 		//viewModel.session.attachToTextureView(textureView)
 		viewModel.session.attachToSurfaceView(binding.surfaceView)
@@ -294,6 +298,7 @@ class StreamActivity : AppCompatActivity()
 	override fun onDestroy()
 	{
 		super.onDestroy()
+		uiVisibilityHandler.removeCallbacks(gotoBedQuitRunnable)
 		controlsJobs.forEach { it.cancel() }
 		controlsJobs.clear()
 		if(feedback != null)
@@ -311,6 +316,39 @@ class StreamActivity : AppCompatActivity()
 	{
 		viewModel.session.shutdown()
 		viewModel.session.resume()
+	}
+
+	private var gotoBedRequested = false
+	private val gotoBedQuitRunnable = Runnable { finish() }
+
+	private fun confirmGotoBed()
+	{
+		if(viewModel.session.state.value != StreamStateConnected)
+		{
+			Toast.makeText(this, R.string.toast_goto_bed_not_connected, Toast.LENGTH_SHORT).show()
+			return
+		}
+		MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.alert_title_goto_bed)
+			.setMessage(R.string.alert_message_goto_bed)
+			.setPositiveButton(R.string.action_goto_bed_confirm) { _, _ -> gotoBed() }
+			.setNegativeButton(R.string.action_goto_bed_cancel, null)
+			.show()
+			.getButton(DialogInterface.BUTTON_NEGATIVE)
+			.requestFocus()
+	}
+
+	// The command is queued, so let the console end the session instead of stopping it right away.
+	private fun gotoBed()
+	{
+		if(!viewModel.session.gotoBed())
+		{
+			Toast.makeText(this, R.string.toast_goto_bed_not_connected, Toast.LENGTH_SHORT).show()
+			return
+		}
+		gotoBedRequested = true
+		Toast.makeText(this, R.string.toast_goto_bed_sent, Toast.LENGTH_LONG).show()
+		uiVisibilityHandler.postDelayed(gotoBedQuitRunnable, GOTO_BED_QUIT_TIMEOUT_MS)
 	}
 
 	private val hideSystemUIRunnable = Runnable { hideSystemUI() }
@@ -373,7 +411,9 @@ class StreamActivity : AppCompatActivity()
 		{
 			is StreamStateQuit ->
 			{
-				if(dialogContents != StreamQuitDialog)
+				if(gotoBedRequested)
+					finish()
+				else if(dialogContents != StreamQuitDialog)
 				{
 					if(state.reason.isError)
 					{

@@ -99,6 +99,13 @@
     <string name="display_hosts_empty_discovery_on_info">Chưa thêm hoặc tìm thấy máy nào.</string>
     <string name="stream_on_screen_controls">Nút ảo trên màn hình</string>
     <string name="stream_touchpad_only">Chỉ touchpad</string>
+    <string name="stream_goto_bed">Cho PS5 nghỉ</string>
+    <string name="alert_title_goto_bed">Cho PS5 vào chế độ nghỉ?</string>
+    <string name="alert_message_goto_bed">PS5 sẽ vào chế độ nghỉ và phiên chơi này kết thúc. Đa số game chỉ bị tạm dừng, nhưng nên lưu game trước cho chắc. Bạn có thể đánh thức PS5 lại từ danh sách máy.</string>
+    <string name="action_goto_bed_confirm">Cho nghỉ</string>
+    <string name="action_goto_bed_cancel">Không</string>
+    <string name="toast_goto_bed_sent">Đã gửi lệnh cho PS5 nghỉ</string>
+    <string name="toast_goto_bed_not_connected">Chưa kết nối xong với PS5</string>
     <string name="preferences_controller_layout_title">Kiểu tay cầm</string>
     <string name="preferences_controller_layout_auto">Tự động</string>
     <string name="preferences_controller_layout_standard">Chuẩn (Xbox / Android)</string>

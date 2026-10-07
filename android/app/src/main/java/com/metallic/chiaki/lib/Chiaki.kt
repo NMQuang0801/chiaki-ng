@@ -96,6 +96,7 @@ private class ChiakiNative
 		@JvmStatic external fun sessionSetControllerState(ptr: Long, controllerState: ControllerState)
 		@JvmStatic external fun sessionSetLoginPin(ptr: Long, pin: String)
 		@JvmStatic external fun sessionSetHapticsRaw(ptr: Long, enabled: Boolean)
+		@JvmStatic external fun sessionGotoBed(ptr: Long): Int
 		@JvmStatic external fun orientationTrackerCreate(): Long
 		@JvmStatic external fun orientationTrackerFree(ptr: Long)
 		@JvmStatic external fun orientationTrackerUpdate(ptr: Long, gx: Float, gy: Float, gz: Float, ax: Float, ay: Float, az: Float, timestampUs: Long, orientOut: FloatArray)
@@ -441,6 +442,9 @@ class Session(connectInfo: ConnectInfo, logFile: String?, logVerbose: Boolean)
 	{
 		ChiakiNative.sessionSetHapticsRaw(nativePtr, enabled)
 	}
+
+	/** Put the console into rest mode, it ends the session by itself afterwards */
+	fun gotoBed() = ErrorCode(ChiakiNative.sessionGotoBed(nativePtr))
 }
 
 /** Madgwick orientation from gyro and accelerometer, as used for the controller state */

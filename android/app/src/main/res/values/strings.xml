@@ -113,6 +113,13 @@
     <string name="display_hosts_empty_discovery_on_info">No consoles added or discovered.</string>
     <string name="stream_on_screen_controls">On-Screen Controls</string>
     <string name="stream_touchpad_only">Touchpad only</string>
+    <string name="stream_goto_bed">Rest Mode</string>
+    <string name="alert_title_goto_bed">Put the console into rest mode?</string>
+    <string name="alert_message_goto_bed">The console goes into rest mode and this session ends. Most games are suspended, but save your game first to be safe. You can wake the console again from the console list.</string>
+    <string name="action_goto_bed_confirm">Rest Mode</string>
+    <string name="action_goto_bed_cancel">Cancel</string>
+    <string name="toast_goto_bed_sent">Rest mode requested</string>
+    <string name="toast_goto_bed_not_connected">Not connected to the console yet</string>
     <string name="preferences_controller_layout_title">Controller Layout</string>
     <string name="preferences_controller_layout_auto">Automatic</string>
     <string name="preferences_controller_layout_standard">Standard (Xbox / Android)</string>

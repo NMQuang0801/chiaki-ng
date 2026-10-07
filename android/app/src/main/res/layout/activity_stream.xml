@@ -44,6 +44,21 @@
         android:layout_height="match_parent"
         android:fitsSystemWindows="true">
 
+        <com.google.android.material.button.MaterialButton
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:id="@+id/gotoBedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="8dp"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:backgroundTint="@color/stream_overlay_background"
+            android:text="@string/stream_goto_bed"
+            android:textColor="@color/stream_text"
+            app:icon="@drawable/ic_goto_bed"
+            app:iconTint="@color/stream_text"
+            app:strokeColor="@color/stream_text"/>
+
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

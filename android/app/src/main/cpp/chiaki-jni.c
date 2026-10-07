@@ -598,6 +598,13 @@ JNIEXPORT void JNICALL JNI_FCN(sessionSetControllerState)(JNIEnv *env, jobject o
 	chiaki_session_set_controller_state(&session->session, &controller_state);
 }
 
+JNIEXPORT jint JNICALL JNI_FCN(sessionGotoBed)(JNIEnv *env, jobject obj, jlong ptr)
+{
+	AndroidChiakiSession *session = (AndroidChiakiSession *)ptr;
+	CHIAKI_LOGI(session->log, "Requesting console to go to rest mode");
+	return chiaki_session_goto_bed(&session->session);
+}
+
 JNIEXPORT void JNICALL JNI_FCN(sessionSetHapticsRaw)(JNIEnv *env, jobject obj, jlong ptr, jboolean enabled)
 {
 	AndroidChiakiSession *session = (AndroidChiakiSession *)ptr;
