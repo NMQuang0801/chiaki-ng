@@ -574,6 +574,7 @@ static chiaki_socket_t regist_search_connect(ChiakiRegist *regist, struct addrin
 				((struct sockaddr_in *)send_addr)->sin_family = AF_INET;
 				r = bind(sock, send_addr, *send_addr_len);
 				((struct sockaddr_in *)send_addr)->sin_addr.s_addr = ip;
+				set_port(send_addr, htons(REGIST_PORT));
 			}
 			else
 			{
@@ -584,6 +585,7 @@ static chiaki_socket_t regist_search_connect(ChiakiRegist *regist, struct addrin
 				((struct sockaddr_in6 *)send_addr)->sin6_family = AF_INET6;
 				r = bind(sock, send_addr, *send_addr_len);
 				memcpy(&(((struct sockaddr_in6 *)send_addr)->sin6_addr), &ip, sizeof(struct in6_addr));
+				set_port(send_addr, htons(REGIST_PORT));
 			}
 			if(r < 0)
 			{
