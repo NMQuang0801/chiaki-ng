@@ -167,6 +167,7 @@ class ControllerFeedback(private val context: Context, private val preferences: 
 
 		private fun gamepads(): List<InputDevice> =
 			InputDevice.getDeviceIds()
+				.asList()
 				.mapNotNull { InputDevice.getDevice(it) }
 				.filter { !it.isVirtual && it.sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD }
 
